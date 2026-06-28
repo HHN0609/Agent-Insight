@@ -14,22 +14,57 @@ import httpx
 
 @dataclass
 class SpanData:
-    """Span 数据结构"""
+    """Span 数据结构
+
+    span_type 取值：
+      - "trace"       → agent_traces 表
+      - "llm_metrics" → llm_metrics 表
+      - "prompt"      → prompt_logs 表
+      - "tool_call"   → tool_calls 表
+      - "session"     → sessions 表
+    """
     trace_id: str
     span_id: str
-    parent_span_id: Optional[str]
-    name: str
-    start_time: str
-    end_time: str
-    span_type: str  # "trace" or "llm_metrics"
+    parent_span_id: Optional[str] = None
+    name: str = ""
+    start_time: str = ""
+    end_time: str = ""
+    span_type: str = "trace"
     attributes: Dict[str, Any] = None
+
+    # prompt 类型专属字段
+    model_name: Optional[str] = None
+    prompt: Optional[str] = None
+    response: Optional[str] = None
+    input_tokens: int = 0
+    output_tokens: int = 0
+    latency_ms: float = 0.0
+    stream: bool = False
+    status: str = "success"
+    error: str = ""
+
+    # tool_call 类型专属字段
+    tool_name: Optional[str] = None
+    tool_type: Optional[str] = None
+    input_data: Optional[str] = None
+    output_data: Optional[str] = None
+    duration_ms: float = 0.0
+
+    # session 类型专属字段
+    session_id: Optional[str] = None
+    agent_name: Optional[str] = None
+    user_input: Optional[str] = None
+    final_response: Optional[str] = None
+    total_spans: int = 0
+    total_tokens: int = 0
+    total_cost_usd: float = 0.0
 
     def __post_init__(self):
         if self.attributes is None:
             self.attributes = {}
 
     def to_dict(self) -> Dict[str, Any]:
-        return {
+        base = {
             "trace_id": self.trace_id,
             "span_id": self.span_id,
             "parent_span_id": self.parent_span_id or "",
@@ -39,6 +74,44 @@ class SpanData:
             "span_type": self.span_type,
             "attributes": self.attributes,
         }
+        # prompt 字段
+        if self.span_type == "prompt":
+            base.update({
+                "model_name": self.model_name,
+                "prompt": self.prompt,
+                "response": self.response,
+                "input_tokens": self.input_tokens,
+                "output_tokens": self.output_tokens,
+                "latency_ms": self.latency_ms,
+                "stream": self.stream,
+                "status": self.status,
+                "error": self.error,
+            })
+        # tool_call 字段
+        if self.span_type == "tool_call":
+            base.update({
+                "tool_name": self.tool_name,
+                "tool_type": self.tool_type,
+                "input_data": self.input_data,
+                "output_data": self.output_data,
+                "duration_ms": self.duration_ms,
+                "status": self.status,
+                "error": self.error,
+            })
+        # session 字段
+        if self.span_type == "session":
+            base.update({
+                "session_id": self.session_id,
+                "agent_name": self.agent_name,
+                "user_input": self.user_input,
+                "final_response": self.final_response,
+                "total_spans": self.total_spans,
+                "total_tokens": self.total_tokens,
+                "total_cost_usd": self.total_cost_usd,
+                "duration_ms": self.duration_ms,
+                "status": self.status,
+            })
+        return base
 
 
 class AsyncBatchUploader:

@@ -5,28 +5,41 @@ Agent Insight SDK - AI Agent 可观测性探针 SDK
 
 核心功能：
 - TraceContext: 上下文管理 (contextvars)
-- OpenAIInterceptor: LLM 调用自动拦截
+- LLMInterceptor: 多厂商 LLM 统一拦截（OpenAI / Anthropic / DeepSeek / vLLM / Ollama 等）
 - StreamMonitor: 流式响应监控 (prefill/decode/TPS)
 - ToolSDK: Tool 调用自动埋点
 - TraceAPI: startTrace/startSpan/endSpan 显式 API
 - AsyncBatchUploader: 异步批量上报
+
+Provider 扩展：继承 BaseProviderAdapter 即可接入新厂商的 LLM SDK
 """
 
 from .context import TraceContext, get_current_context, set_current_context, clear_current_context
-from .interceptor import OpenAIInterceptor
+from .providers import LLMInterceptor, BaseProviderAdapter, LLMCallRecord, register_adapter
 from .stream_monitor import StreamMonitor, MonitoredStream
 from .tool_sdk import ToolSDK
-from .trace_api import TraceAPI, SpanContext
+from .trace_api import TraceAPI
 from .uploader import AsyncBatchUploader, SpanData
 
-__version__ = "0.2.0"
+# 为保持历史兼容，保留 OpenAIInterceptor 别名
+from .providers.openai_compatible import OpenAICompatibleAdapter
+
+OpenAIInterceptor = LLMInterceptor  # deprecated alias
+
+__version__ = "0.3.0"
 __all__ = [
     # 上下文管理
     "TraceContext",
     "get_current_context",
     "set_current_context",
     "clear_current_context",
-    # LLM 拦截
+    # LLM 拦截（多厂商统一入口）
+    "LLMInterceptor",
+    "BaseProviderAdapter",
+    "LLMCallRecord",
+    "register_adapter",
+    "OpenAICompatibleAdapter",
+    # 历史兼容
     "OpenAIInterceptor",
     # 流式监控
     "StreamMonitor",
@@ -35,7 +48,6 @@ __all__ = [
     "ToolSDK",
     # Trace API
     "TraceAPI",
-    "SpanContext",
     # 上报器
     "AsyncBatchUploader",
     "SpanData",

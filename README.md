@@ -67,7 +67,7 @@
 
 | 层级 | 技术 | 说明 |
 |------|------|------|
-| **探针 SDK** | Python 3.10+ | 异步/同步拦截，基于 contextvars 传递 |
+| **探针 SDK** | Python 3.10+ | 多厂商 LLM 拦截（Provider Adapter 模式），contextvars 上下文传递 |
 | **后端服务** | FastAPI | 异步框架，高并发 Ingestion |
 | **消息中间件** | Kafka (KRaft) | 单机 Docker 版，高并发削峰，无需 Zookeeper |
 | **数据存储** | ClickHouse | 列式数据库，6 张表 + 2 个物化视图 |
@@ -85,13 +85,17 @@ agent-observability/
 │
 ├── sdk/                            # Python 探针 SDK
 │   ├── agent_insight_sdk/
-│   │   ├── __init__.py             # 模块入口 (6 个公开 API)
+│   │   ├── __init__.py             # 模块入口 (8 个公开 API)
 │   │   ├── context.py              # TraceContext 上下文管理 (contextvars)
-│   │   ├── interceptor.py          # OpenAIInterceptor LLM 调用拦截
+│   │   ├── interceptor.py          # [兼容保留] 原 OpenAIInterceptor
 │   │   ├── stream_monitor.py       # StreamMonitor 流式响应监控
 │   │   ├── tool_sdk.py             # ToolSDK 装饰器自动埋点
 │   │   ├── trace_api.py            # TraceAPI 显式 startTrace/startSpan/endSpan
-│   │   └── uploader.py             # AsyncBatchUploader 异步批量上报
+│   │   ├── uploader.py             # AsyncBatchUploader + SpanData（5 种 span_type）
+│   │   └── providers/              # Provider Adapter 模式（多厂商 LLM 拦截）
+│   │       ├── base.py             # BaseProviderAdapter + LLMInterceptor + LLMCallRecord
+│   │       ├── openai_compatible.py# OpenAI / DeepSeek / vLLM / Ollama 等
+│   │       └── anthropic.py        # Anthropic Claude
 │   ├── examples/
 │   │   ├── lesson1_simple_agent.py # 第1课：无埋点简单 Agent 演示
 │   │   └── lesson3_sdk_demo.py     # 第3课：SDK 完整功能演示
@@ -456,7 +460,7 @@ ClickHouse 包含 6 张业务表 + 2 个物化视图：
 ```python
 from agent_insight_sdk import (
     TraceContext,          # 上下文管理
-    OpenAIInterceptor,     # LLM 调用拦截
+    LLMInterceptor,        # 多厂商 LLM 统一拦截（自动识别 provider）
     StreamMonitor,         # 流式响应监控
     ToolSDK,               # Tool 自动埋点
     TraceAPI,              # 显式 Trace API
@@ -464,13 +468,49 @@ from agent_insight_sdk import (
 )
 ```
 
+### Provider Adapter 模式
+
+SDK 内置 Provider Adapter 模式，同一套 `LLMInterceptor.wrap(client)` API 支持所有主流 LLM 厂商：
+
+| 厂商 | SDK | 协议 | Adapter |
+|------|-----|------|---------|
+| **OpenAI** | `pip install openai` | OpenAI | `OpenAICompatibleAdapter` |
+| **DeepSeek** | `pip install openai` | OpenAI 兼容 | `OpenAICompatibleAdapter` |
+| **vLLM** | `pip install openai` | OpenAI 兼容 | `OpenAICompatibleAdapter` |
+| **Ollama** | `pip install openai` | OpenAI 兼容 | `OpenAICompatibleAdapter` |
+| **Groq** | `pip install openai` | OpenAI 兼容 | `OpenAICompatibleAdapter` |
+| **Anthropic** | `pip install anthropic` | Anthropic 专有 | `AnthropicAdapter` |
+| **自定义** | 任意 | 任意 | 实现 `BaseProviderAdapter` |
+
+```python
+from openai import OpenAI
+from agent_insight_sdk import LLMInterceptor, AsyncBatchUploader
+
+uploader = AsyncBatchUploader()
+await uploader.start()
+
+interceptor = LLMInterceptor(uploader)
+
+# 任何 OpenAI 兼容的客户端，一行代码拦截
+client = OpenAI(api_key="sk-xxx", base_url="https://api.deepseek.com/v1")
+client = interceptor.wrap(client)  # ← 自动识别
+
+response = client.chat.completions.create(
+    model="deepseek-chat",
+    messages=[{"role": "user", "content": "Hello"}],
+)
+# 调用自动上报 trace + metrics + prompt 三类数据
+```
+
+### 各组件功能速览
+
 | 组件 | 功能 |
 |------|------|
 | `TraceContext` | 基于 contextvars 的异步安全上下文，自动维护 trace_id / span_id / parent_span_id |
-| `OpenAIInterceptor` | 包装 OpenAI 客户端，自动拦截所有 LLM 调用，记录 model / stream / tokens / latency |
+| `LLMInterceptor` | 多厂商 LLM 统一拦截器，`wrap(client)` 自动识别 Provider 并拦截所有 LLM 调用 |
 | `StreamMonitor` | 监控流式响应的 chunk，精确计算 prefill_ms（首字耗时）和 decode_ms（生成耗时） |
 | `ToolSDK` | `@tool_sdk.instrument()` 装饰器，自动记录 Tool 输入/输出/耗时/异常 |
-| `TraceAPI` | 显式 `startTrace()` / `startSpan()` / `endSpan()` API，适用于需要手动控制链路场景 |
+| `TraceAPI` | 显式 `startTrace()` / `startSpan()` / `endSpan()` API，适用于手动控制链路场景 |
 | `AsyncBatchUploader` | 内存队列 + 后台任务，每 500ms 或满 20 条自动批量上报至后端 |
 
 ## 前端页面
@@ -504,14 +544,15 @@ from agent_insight_sdk import (
 - 自动计算耗时、状态、错误信息
 - **实现**: `sdk/agent_insight_sdk/context.py`
 
-### 第 3 课 - SDK 自动埋点
+### 第 3 课 - SDK 自动埋点（多厂商支持）
 
-- `OpenAIInterceptor` — 封装 LLM SDK，自动记录 Prompt / Completion / Token / Latency
+- `LLMInterceptor` — 统一拦截器，`wrap(client)` 自动识别 Provider，支持 OpenAI / Anthropic / DeepSeek / vLLM / Ollama 等
+- 基于 Provider Adapter 模式，新增厂商只需实现 `BaseProviderAdapter`
 - `StreamMonitor` — 流式响应监控，精确计算 prefill_ms / decode_ms / TPS
 - `ToolSDK` — 装饰器自动记录 Tool 输入/输出/异常/耗时
 - `TraceAPI` — 显式 `startTrace()` / `startSpan()` / `endSpan()` API
 - `AsyncBatchUploader` — 异步批量上报至后端
-- **示例**: `sdk/examples/lesson3_sdk_demo.py`
+- **示例**: `sdk/examples/lesson3_sdk_demo.py`（真实 API 调用 + 多厂商）
 
 ### 第 4 课 - Collector 与存储
 

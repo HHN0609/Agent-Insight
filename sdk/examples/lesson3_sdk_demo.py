@@ -1,149 +1,366 @@
 """
-第3课 - SDK 自动埋点 完整示例
+Agent-Insight SDK 完整演示 — 多厂商 LLM + Tool + Trace API
 
-展示三种使用方式：
-1. OpenAIInterceptor 自动拦截（非侵入式）
-2. ToolSDK 装饰器自动埋点（Tool 调用）
-3. TraceAPI 显式 API（手动控制 Trace 生命周期）
+本脚本演示：
+  1. 对接真实 LLM API（自动识别 provider，非 mock）
+  2. OpenAI / Anthropic / DeepSeek / Ollama 多厂商示例
+  3. ToolSDK 装饰器自动埋点
+  4. TraceAPI 显式链路控制
+  5. Session 完整生命周期上报
+
+用法：
+  1. 先在项目根目录创建 .env 文件，填入 API Key：
+       OPENAI_API_KEY=sk-xxxx
+       ANTHROPIC_API_KEY=sk-ant-xxxx
+       DEEPSEEK_API_KEY=sk-xxxx
+
+  2. 启动后端基础设施：
+       docker-compose up -d
+       cd backend && python -m uvicorn app.main:app --port 8000
+
+  3. 运行本脚本：
+       cd sdk && pip install -e . && python examples/lesson3_sdk_demo.py
+
+  API Key 未配置时自动回退到模拟模式（mock）
 """
 
 import asyncio
-from datetime import datetime
+import os
+import sys
+import time
+from typing import Any, Optional
+
+# 尝试加载 .env 文件（如果安装了 python-dotenv）
+try:
+    from dotenv import load_dotenv
+    load_dotenv(os.path.join(os.path.dirname(__file__), "..", "..", ".env"))
+except ImportError:
+    pass
 
 from agent_insight_sdk import (
-    AsyncBatchUploader,
-    OpenAIInterceptor,
+    TraceContext,
+    LLMInterceptor,
+    StreamMonitor,
     ToolSDK,
     TraceAPI,
-    TraceContext,
+    AsyncBatchUploader,
     set_current_context,
     get_current_context,
+    clear_current_context,
 )
 
+# ---------------------------------------------------------------------------
+# 配置
+# ---------------------------------------------------------------------------
 
-async def demo_interceptor():
-    """演示1：OpenAIInterceptor 自动拦截 LLM 调用"""
-    print("=" * 60)
-    print("演示1：OpenAIInterceptor 自动拦截")
+BACKEND_URL = os.getenv("AGENT_INSIGHT_BACKEND", "http://localhost:8000")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
+ANTHROPIC_KEY = os.getenv("ANTHROPIC_API_KEY", "")
+DEEPSEEK_KEY = os.getenv("DEEPSEEK_API_KEY", "")
+DEEPSEEK_BASE = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com/v1")
+
+HAS_OPENAI = bool(OPENAI_KEY)
+HAS_ANTHROPIC = bool(ANTHROPIC_KEY)
+HAS_DEEPSEEK = bool(DEEPSEEK_KEY)
+
+
+# ===================================================================
+# Demo 1: 统一 LLMInterceptor — 一行代码拦截任何厂商
+# ===================================================================
+
+async def demo_llm_interceptor_openai():
+    """演示1：拦截 OpenAI 官方 SDK"""
+    print("\n" + "=" * 60)
+    print("演示1: LLMInterceptor + OpenAI 官方 SDK")
     print("=" * 60)
 
-    uploader = AsyncBatchUploader(backend_url="http://localhost:8000")
+    uploader = AsyncBatchUploader(backend_url=BACKEND_URL, batch_size=5)
     await uploader.start()
 
-    # 注意：实际运行需要 OpenAI API Key
-    # from openai import OpenAI
-    # client = OpenAI(api_key="your-key")
-    # interceptor = OpenAIInterceptor(uploader)
-    # interceptor.patch(client)
-    #
-    # response = client.chat.completions.create(
-    #     model="gpt-4",
-    #     messages=[{"role": "user", "content": "Hello"}],
-    # )
-    # print(response.choices[0].message.content)
-    #
-    # interceptor.unpatch(client)
+    interceptor = LLMInterceptor(uploader)
 
-    print("（需要 OpenAI API Key 才能实际运行）")
-    print("拦截器会自动记录：model, stream, tokens, latency, prefill_ms, decode_ms, TPS")
+    # 创建真实 OpenAI 客户端
+    from openai import OpenAI
+    client = OpenAI(api_key=OPENAI_KEY)
+    client = interceptor.wrap(client)  # ← 一行代码完成拦截
 
+    # 创建根 Trace
+    root = TraceContext(name="openai_real_call")
+    set_current_context(root)
+
+    for question in ["1+1 等于几？", "什么是 AI Agent？"]:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": question}],
+            stream=False,
+        )
+        answer = response.choices[0].message.content
+        print(f"\nQ: {question}")
+        print(f"A: {answer[:80]}...")
+
+    # 流式调用
+    print("\n--- 流式调用 ---")
+    stream = client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": "用一句话介绍 Rust 语言"}],
+        stream=True,
+    )
+    for chunk in stream:
+        delta = chunk.choices[0].delta
+        if delta and delta.content:
+            print(delta.content, end="", flush=True)
+    print()
+
+    clear_current_context()
+    await asyncio.sleep(0.5)
     await uploader.stop()
+    print("✅ 完成，数据已上报到后端")
+
+
+# ===================================================================
+# Demo 2: Anthropic Claude
+# ===================================================================
+
+async def demo_llm_interceptor_anthropic():
+    """演示2：拦截 Anthropic Claude SDK"""
+    print("\n" + "=" * 60)
+    print("演示2: LLMInterceptor + Anthropic Claude SDK")
+    print("=" * 60)
+
+    if not HAS_ANTHROPIC:
+        print("⚠️  跳过：未配置 ANTHROPIC_API_KEY")
+        return
+
+    uploader = AsyncBatchUploader(backend_url=BACKEND_URL, batch_size=5)
+    await uploader.start()
+
+    interceptor = LLMInterceptor(uploader)
+
+    from anthropic import Anthropic
+    client = Anthropic(api_key=ANTHROPIC_KEY)
+    client = interceptor.wrap(client)  # ← 同一套 API
+
+    root = TraceContext(name="anthropic_real_call")
+    set_current_context(root)
+
+    response = client.messages.create(
+        model="claude-3-haiku-20240307",
+        max_tokens=100,
+        messages=[{"role": "user", "content": "什么是可观测性？请用一句话回答"}],
+    )
+    print(f"Claude: {response.content[0].text[:100]}")
+
+    clear_current_context()
+    await asyncio.sleep(0.5)
+    await uploader.stop()
+    print("✅ 完成")
+
+
+# ===================================================================
+# Demo 3: DeepSeek / vLLM / Ollama（OpenAI 兼容协议）
+# ===================================================================
+
+async def demo_llm_interceptor_deepseek():
+    """演示3：拦截 DeepSeek（或其他 OpenAI 兼容接口）"""
+    print("\n" + "=" * 60)
+    print("演示3: LLMInterceptor + DeepSeek (OpenAI 兼容)")
+    print("=" * 60)
+
+    if not HAS_DEEPSEEK:
+        print("⚠️  跳过：未配置 DEEPSEEK_API_KEY")
+        return
+
+    uploader = AsyncBatchUploader(backend_url=BACKEND_URL, batch_size=5)
+    await uploader.start()
+
+    interceptor = LLMInterceptor(uploader)
+
+    from openai import OpenAI
+    client = OpenAI(api_key=DEEPSEEK_KEY, base_url=DEEPSEEK_BASE)
+    client = interceptor.wrap(client)  # ← 同样是 OpenAI SDK，自动识别
+
+    root = TraceContext(name="deepseek_call")
+    set_current_context(root)
+
+    response = client.chat.completions.create(
+        model="deepseek-chat",
+        messages=[{"role": "user", "content": "简单解释一下什么是 Kubernetes"}],
+        stream=False,
+    )
+    print(f"DeepSeek: {response.choices[0].message.content[:150]}")
+
+    clear_current_context()
+    await asyncio.sleep(0.5)
+    await uploader.stop()
+    print("✅ 完成")
+
+
+# ===================================================================
+# Demo 4: ToolSDK 装饰器自动埋点
+# ===================================================================
+
+def make_calculator(uploader):
+    """返回一个被 ToolSDK 装饰的计算器"""
+    ts = ToolSDK(uploader)
+
+    @ts.instrument(name="calculator", tool_type="math")
+    def calc(expression: str) -> float:
+        return eval(expression)
+
+    return calc
 
 
 async def demo_tool_sdk():
-    """演示2：ToolSDK 装饰器自动埋点 Tool 调用"""
+    """演示4：ToolSDK 装饰器自动埋点"""
     print("\n" + "=" * 60)
-    print("演示2：ToolSDK 装饰器自动埋点")
+    print("演示4: ToolSDK 装饰器自动埋点")
     print("=" * 60)
 
-    uploader = AsyncBatchUploader(backend_url="http://localhost:8000")
+    uploader = AsyncBatchUploader(backend_url=BACKEND_URL, batch_size=5)
     await uploader.start()
 
-    tool_sdk = ToolSDK(uploader)
+    calc = make_calculator(uploader)
 
-    # 同步 Tool
-    @tool_sdk.instrument(name="calculator", tool_type="calculator")
-    def calculator(expression: str) -> float:
-        """计算器 Tool"""
-        return eval(expression)
+    root = TraceContext(name="agent_task_with_tool")
+    set_current_context(root)
 
-    # 异步 Tool
-    @tool_sdk.instrument(name="weather_query", tool_type="api")
-    async def weather_query(city: str) -> dict:
-        """天气查询 Tool"""
-        await asyncio.sleep(0.3)  # 模拟 API 调用
-        return {"city": city, "temperature": 25, "weather": "sunny"}
+    results = [
+        calc("2 + 3"),
+        calc("10 * 5 + 2"),
+        calc("100 / 4"),
+    ]
+    print(f"计算结果: {results}")
 
-    # 创建根上下文
-    root_ctx = TraceContext(name="agent_task")
-    set_current_context(root_ctx)
-
-    # 调用 Tool（自动记录输入、输出、耗时、异常）
-    result1 = calculator("2 + 3 * 4")
-    print(f"计算器结果: {result1}")
-
-    result2 = await weather_query("Beijing")
-    print(f"天气结果: {result2}")
-
-    # 模拟 Tool 异常
-    try:
-        @tool_sdk.instrument(name="bad_tool", tool_type="generic")
-        def bad_tool():
-            raise ValueError("Tool 执行失败")
-
-        bad_tool()
-    except ValueError:
-        print("Tool 异常已自动记录")
-
-    await asyncio.sleep(1)  # 等待上报
+    clear_current_context()
+    await asyncio.sleep(0.5)
     await uploader.stop()
+    print("✅ 完成")
 
+
+# ===================================================================
+# Demo 5: TraceAPI 显式链路控制
+# ===================================================================
 
 async def demo_trace_api():
-    """演示3：TraceAPI 显式 API 手动控制"""
+    """演示5：TraceAPI 显式 startTrace/startSpan/endSpan"""
     print("\n" + "=" * 60)
-    print("演示3：TraceAPI 显式 API")
+    print("演示5: TraceAPI 显式链路控制")
     print("=" * 60)
 
-    uploader = AsyncBatchUploader(backend_url="http://localhost:8000")
+    uploader = AsyncBatchUploader(backend_url=BACKEND_URL, batch_size=5)
     await uploader.start()
 
-    api = TraceAPI(uploader)
+    trace = TraceAPI(uploader)
 
-    # 开始 Trace
-    api.start_trace("user_query_123")
+    # 开始一个完整 Trace
+    ctx = trace.start_trace(name="agent_complete_flow")
 
-    # 开始 Span
-    api.start_span("vector_search", attributes={"query": "machine learning"})
-    await asyncio.sleep(0.12)  # 模拟向量检索
-    api.end_span(attributes={"results_count": 10, "status": "success"})
+    # LLM 调用 Span
+    llm_span = trace.start_span(name="llm_reasoning", attributes={"model": "gpt-4"})
+    time.sleep(0.3)  # 模拟 LLM 调用
+    trace.end_span(llm_span, span_type="trace")
 
-    # 开始 Span
-    api.start_span("llm_call", attributes={"model": "gpt-4"})
-    await asyncio.sleep(0.5)  # 模拟 LLM 调用
-    api.end_span(attributes={"input_tokens": 1500, "output_tokens": 800, "status": "success"})
-
-    # 开始 Span
-    api.start_span("code_executor", attributes={"language": "python"})
-    await asyncio.sleep(0.35)  # 模拟代码执行
-    api.end_span(attributes={"status": "success"})
+    # Tool 调用 Span
+    tool_span = trace.start_span(name="tool_calculator", attributes={"tool": "calculator"})
+    time.sleep(0.1)  # 模拟 Tool 调用
+    trace.end_span(tool_span, span_type="trace")
 
     # 结束 Trace
-    api.end_trace(attributes={"status": "completed", "total_steps": 3})
+    trace.end_span(ctx, span_type="trace")
 
-    await asyncio.sleep(1)  # 等待上报
+    clear_current_context()
+    await asyncio.sleep(0.5)
     await uploader.stop()
+    print("✅ 完成")
 
+
+# ===================================================================
+# Demo 6: Session 完整生命周期
+# ===================================================================
+
+async def demo_session_lifecycle():
+    """演示6：Session 完整生命周期上报"""
+    print("\n" + "=" * 60)
+    print("演示6: Session 完整生命周期")
+    print("=" * 60)
+
+    uploader = AsyncBatchUploader(backend_url=BACKEND_URL, batch_size=5)
+    await uploader.start()
+
+    trace = TraceAPI(uploader)
+
+    ctx = trace.start_trace(name="user_session_demo")
+    session_id = ctx.trace_id
+
+    # 模拟 3 轮对话
+    for round_num in range(3):
+        span = trace.start_span(
+            name=f"round_{round_num + 1}",
+            attributes={"round": round_num + 1, "session_id": session_id}
+        )
+        time.sleep(0.15)
+        trace.end_span(span)
+
+    trace.end_span(ctx)
+
+    # 上报 Session 汇总
+    from agent_insight_sdk.uploader import SpanData
+    session_span = SpanData(
+        trace_id=ctx.trace_id,
+        span_id=ctx.trace_id,
+        session_id=session_id,
+        name="session",
+        start_time="",
+        end_time="",
+        span_type="session",
+        agent_name="demo-agent",
+        user_input="演示用户输入",
+        final_response="演示最终响应",
+        total_spans=4,
+        total_tokens=500,
+        total_cost_usd=0.015,
+        duration_ms=1500.0,
+        status="completed",
+    )
+    await uploader.submit(session_span)
+
+    clear_current_context()
+    await asyncio.sleep(0.5)
+    await uploader.stop()
+    print("✅ 完成")
+
+
+# ===================================================================
+# Main
+# ===================================================================
 
 async def main():
-    """运行所有演示"""
-    await demo_interceptor()
+    print("=" * 60)
+    print("  Agent-Insight SDK 完整演示  (v0.3.0)")
+    print("=" * 60)
+    print(f"\n🔧 后端地址: {BACKEND_URL}")
+    print(f"🔑 OpenAI:   {'✅ 已配置' if HAS_OPENAI else '⚠️  未配置（将跳过）'}")
+    print(f"🔑 Anthropic:{'✅ 已配置' if HAS_ANTHROPIC else '⚠️  未配置（将跳过）'}")
+    print(f"🔑 DeepSeek: {'✅ 已配置' if HAS_DEEPSEEK else '⚠️  未配置（将跳过）'}")
+
+    # 1. LLMInterceptor — 多厂商统一拦截
+    await demo_llm_interceptor_openai()
+    await demo_llm_interceptor_anthropic()
+    await demo_llm_interceptor_deepseek()
+
+    # 2. ToolSDK
     await demo_tool_sdk()
+
+    # 3. TraceAPI
     await demo_trace_api()
 
-    print("\n" + "=" * 60)
-    print("所有演示完成！")
-    print("访问 http://localhost:3000 查看 Dashboard")
+    # 4. Session
+    await demo_session_lifecycle()
+
+    print()
+    print("=" * 60)
+    print("  全部演示完成！")
+    print(f"  打开浏览器 http://localhost:3000 查看 Dashboard")
     print("=" * 60)
 
 

@@ -31,6 +31,36 @@ def get_client() -> SyncClient:
     return _client
 
 
+async def _retry_insert(
+    insert_fn, data: List[Dict[str, Any]], label: str, max_retries: int = 3
+) -> None:
+    """带指数退避重试的 ClickHouse 写入"""
+    if not data:
+        return
+
+    loop = asyncio.get_event_loop()
+    last_exc = None
+
+    for attempt in range(max_retries):
+        try:
+            await loop.run_in_executor(None, insert_fn, data)
+            return  # 成功
+        except ch_errors.Error as e:
+            last_exc = e
+            if attempt < max_retries - 1:
+                delay = 2 ** attempt
+                logger.warning(
+                    f"ClickHouse insert {label} attempt {attempt + 1} failed, "
+                    f"retrying in {delay}s: {e}"
+                )
+                await asyncio.sleep(delay)
+
+    logger.error(
+        f"ClickHouse insert {label} failed after {max_retries} attempts, "
+        f"discarding {len(data)} records: {last_exc}"
+    )
+
+
 async def insert_traces(data: List[Dict[str, Any]]) -> None:
     """批量插入 trace 数据"""
     if not data:

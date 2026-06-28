@@ -18,6 +18,7 @@ from ..clickhouse.client import (
     insert_prompts,
     insert_tool_calls,
     insert_sessions,
+    _retry_insert,
 )
 
 logger = logging.getLogger(__name__)
@@ -90,27 +91,38 @@ async def consume_loop() -> None:
         "session": (insert_sessions, flush_sessions),
     }
 
+    FLUSH_INTERVAL = 5.0  # 即使未达阈值，每 5 秒强制刷新一次
+
     try:
-        async for msg in _consumer:
-            data = msg.value
-            items = data if isinstance(data, list) else [data]
+        while True:
+            # 带超时的 poll — 同时支持批量阈值和定期刷新
+            try:
+                msg = await asyncio.wait_for(
+                    _consumer.getone(),
+                    timeout=FLUSH_INTERVAL,
+                )
+                data = msg.value
+                items = data if isinstance(data, list) else [data]
 
-            for item in items:
-                span_type = item.get("span_type", "trace")
-                parsed = parse_item(item)
+                for item in items:
+                    span_type = item.get("span_type", "trace")
+                    parsed = parse_item(item)
 
-                if span_type == "llm_metrics":
-                    batches["metrics"].append(parsed)
-                elif span_type == "prompt":
-                    batches["prompt"].append(parsed)
-                elif span_type == "tool_call":
-                    batches["tool_call"].append(parsed)
-                elif span_type == "session":
-                    batches["session"].append(parsed)
-                else:
-                    batches["trace"].append(parsed)
+                    if span_type == "llm_metrics":
+                        batches["metrics"].append(parsed)
+                    elif span_type == "prompt":
+                        batches["prompt"].append(parsed)
+                    elif span_type == "tool_call":
+                        batches["tool_call"].append(parsed)
+                    elif span_type == "session":
+                        batches["session"].append(parsed)
+                    else:
+                        batches["trace"].append(parsed)
 
-            # 批量刷新
+            except asyncio.TimeoutError:
+                pass  # 超时后走定期刷新逻辑
+
+            # 批量刷新（阈值或定期）
             for key, batch in batches.items():
                 if len(batch) >= BATCH_SIZE:
                     await flush_map[key][1](batch)
@@ -121,6 +133,12 @@ async def consume_loop() -> None:
     except Exception as e:
         logger.error(f"Error in consumer loop: {e}")
         raise
+    finally:
+        # 关闭前刷新所有残留数据
+        for key, batch in batches.items():
+            if batch:
+                await flush_map[key][1](batch)
+                logger.info(f"Flushed remaining {len(batch)} {key} on shutdown")
 
 
 # ---- 数据解析 ----
@@ -245,32 +263,21 @@ def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> fl
 
 # ---- 批量写入 ----
 
-
-async def _flush(batch: List[dict], insert_fn, label: str) -> None:
-    if not batch:
-        return
-    try:
-        await insert_fn(batch)
-        logger.debug(f"Flushed {len(batch)} {label} to ClickHouse")
-    except Exception as e:
-        logger.error(f"Failed to flush {label}: {e}")
-
-
 async def flush_traces(batch: List[dict]) -> None:
-    await _flush(batch, insert_traces, "traces")
+    await _retry_insert(insert_traces, batch, "traces")
 
 
 async def flush_metrics(batch: List[dict]) -> None:
-    await _flush(batch, insert_metrics, "metrics")
+    await _retry_insert(insert_metrics, batch, "metrics")
 
 
 async def flush_prompts(batch: List[dict]) -> None:
-    await _flush(batch, insert_prompts, "prompts")
+    await _retry_insert(insert_prompts, batch, "prompts")
 
 
 async def flush_tool_calls(batch: List[dict]) -> None:
-    await _flush(batch, insert_tool_calls, "tool_calls")
+    await _retry_insert(insert_tool_calls, batch, "tool_calls")
 
 
 async def flush_sessions(batch: List[dict]) -> None:
-    await _flush(batch, insert_sessions, "sessions")
+    await _retry_insert(insert_sessions, batch, "sessions")

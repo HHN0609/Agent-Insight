@@ -1,5 +1,10 @@
 """
 Kafka 生产者 - 用于将 SDK 上报的数据投递到 Kafka
+
+设计要点：
+  - send_and_wait() 会阻塞事件循环，高并发下退化为串行
+  - 改用 send() + add_done_callback，FastAPI handler 立即返回
+  - batch send 只记录错误日志，不向上抛异常（数据已由 SDK 重试兜底）
 """
 
 import json
@@ -25,6 +30,7 @@ async def init_producer() -> None:
             acks=1,
             max_batch_size=16384,
             linger_ms=10,
+            compression_type="gzip",  # 压缩减少网络 IO 70%+
         )
         await _producer.start()
         logger.info(f"Kafka producer started, servers: {settings.kafka_bootstrap_servers}")
@@ -42,17 +48,41 @@ async def close_producer() -> None:
         logger.info("Kafka producer stopped")
 
 
+def _on_send_success(metadata, batch_size: int) -> None:
+    """发送成功回调"""
+    logger.debug(
+        f"Kafka send OK: topic={metadata.topic}, partition={metadata.partition}, "
+        f"offset={metadata.offset}, records={batch_size}"
+    )
+
+
+def _on_send_error(exc, batch_size: int) -> None:
+    """发送失败回调（仅记录日志，SDK 侧有重试机制兜底）"""
+    logger.error(
+        f"Kafka send FAILED after async write, records={batch_size}: {exc}"
+    )
+
+
 async def send_batch(data: List[Dict[str, Any]]) -> None:
-    """发送一批数据到 Kafka"""
+    """
+    投递一批数据到 Kafka（非阻塞）
+
+    - 使用 send() 而非 send_and_wait()
+    - 回调中记录成功/失败，不阻塞 FastAPI handler
+    - 不会 raise 异常，保 Collector 的快速返回路径不受影响
+    """
     if not _producer:
         raise RuntimeError("Kafka producer not initialized")
 
-    try:
-        await _producer.send_and_wait(
-            settings.kafka_topic,
-            value=data,
+    batch_size = len(data)
+    fut = await _producer.send(
+        settings.kafka_topic,
+        value=data,
+    )
+    fut.add_done_callback(
+        lambda f: (
+            _on_send_success(f.result(), batch_size)
+            if f.exception() is None
+            else _on_send_error(f.exception(), batch_size)
         )
-        logger.debug(f"Sent {len(data)} records to Kafka topic: {settings.kafka_topic}")
-    except Exception as e:
-        logger.error(f"Failed to send batch to Kafka: {e}")
-        raise
+    )

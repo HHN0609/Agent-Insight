@@ -115,7 +115,12 @@ class SpanData:
 
 
 class AsyncBatchUploader:
-    """异步批量上报器"""
+    """异步批量上报器 — 带背压保护 + 指数退避重试"""
+
+    # 最大重试次数
+    MAX_RETRIES = 3
+    # 有界队列容量（防止 OOM）
+    QUEUE_MAXSIZE = 10000
 
     def __init__(
         self,
@@ -126,11 +131,16 @@ class AsyncBatchUploader:
         self._backend_url = backend_url
         self._batch_size = batch_size
         self._flush_interval = flush_interval
-        self._queue: asyncio.Queue = asyncio.Queue()
+        # 有界队列：超出容量时 put_nowait 会报 QueueFull，调用方可感知背压
+        self._queue: asyncio.Queue = asyncio.Queue(maxsize=self.QUEUE_MAXSIZE)
         self._running = False
         self._task: Optional[asyncio.Task] = None
         self._client: Optional[httpx.AsyncClient] = None
         self._logger = logging.getLogger(__name__)
+        # 统计
+        self._dropped = 0
+        self._sent = 0
+        self._failed = 0
 
     async def start(self) -> None:
         """启动后台上报任务"""
@@ -164,8 +174,26 @@ class AsyncBatchUploader:
         self._logger.info("AsyncBatchUploader stopped")
 
     async def submit(self, span: SpanData) -> None:
-        """提交 span 数据到队列"""
-        await self._queue.put(span.to_dict())
+        """提交 span 数据到队列（非阻塞，队列满时丢弃并告警）"""
+        try:
+            self._queue.put_nowait(span.to_dict())
+        except asyncio.QueueFull:
+            self._dropped += 1
+            if self._dropped % 100 == 1:
+                self._logger.warning(
+                    f"Uploader queue full (capacity={self.QUEUE_MAXSIZE}), "
+                    f"dropped={self._dropped}. Consider increasing batch_size or flush_interval."
+                )
+
+    @property
+    def stats(self) -> Dict[str, int]:
+        """返回上报统计"""
+        return {
+            "queue_size": self._queue.qsize(),
+            "sent": self._sent,
+            "failed": self._failed,
+            "dropped": self._dropped,
+        }
 
     async def _upload_loop(self) -> None:
         """后台上报循环"""
@@ -196,21 +224,43 @@ class AsyncBatchUploader:
             await self._flush_batch(batch)
 
     async def _flush_batch(self, batch: List[Dict[str, Any]]) -> None:
-        """刷新一批数据到后端"""
+        """刷新一批数据到后端，失败时指数退避重试"""
         if not batch or not self._client:
             return
 
-        try:
-            url = f"{self._backend_url}/api/v1/collect"
-            response = await self._client.post(url, json=batch)
-            if response.status_code == 202:
-                self._logger.debug(f"Successfully uploaded {len(batch)} spans")
-            else:
+        url = f"{self._backend_url}/api/v1/collect"
+        last_exc = None
+
+        for attempt in range(self.MAX_RETRIES):
+            try:
+                response = await self._client.post(url, json=batch)
+                if response.status_code == 202:
+                    self._sent += len(batch)
+                    self._logger.debug(
+                        f"Uploaded {len(batch)} spans (attempt {attempt + 1})"
+                    )
+                    return  # 成功，退出
+                else:
+                    last_exc = RuntimeError(
+                        f"HTTP {response.status_code}: {response.text[:200]}"
+                    )
+            except Exception as e:
+                last_exc = e
+
+            # 指数退避：1s, 2s, 4s
+            if attempt < self.MAX_RETRIES - 1:
+                delay = 2 ** attempt
                 self._logger.warning(
-                    f"Upload failed with status {response.status_code}: {response.text}"
+                    f"Upload attempt {attempt + 1} failed, retrying in {delay}s: {last_exc}"
                 )
-        except Exception as e:
-            self._logger.error(f"Failed to upload batch: {e}")
+                await asyncio.sleep(delay)
+
+        # 三次重试后仍失败
+        self._failed += len(batch)
+        self._logger.error(
+            f"Upload failed after {self.MAX_RETRIES} attempts, "
+            f"discarding {len(batch)} spans: {last_exc}"
+        )
 
     async def _flush(self) -> None:
         """刷新队列中所有剩余数据"""

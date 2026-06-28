@@ -10,7 +10,13 @@ from typing import Any, Dict, List
 from aiokafka import AIOKafkaConsumer
 
 from ..config import settings
-from ..clickhouse.client import insert_traces, insert_metrics
+from ..clickhouse.client import (
+    insert_traces,
+    insert_metrics,
+    insert_prompts,
+    insert_tool_calls,
+    insert_sessions,
+)
 
 logger = logging.getLogger(__name__)
 

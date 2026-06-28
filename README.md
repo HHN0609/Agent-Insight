@@ -143,59 +143,280 @@ agent-observability/
 
 ### 前置条件
 
-- Docker Desktop（已安装）
-- Python 3.10+
-- Node.js 18+
+| 工具 | 版本要求 | 检查命令 |
+|------|---------|---------|
+| Docker Desktop | 最新版（WSL2 后端） | `docker --version` |
+| Python | 3.10 或更高 | `python --version` |
+| Node.js | 18 或更高 | `node --version` |
+| npm | 9 或更高（随 Node.js 附带） | `npm --version` |
 
-### 1. 启动基础设施
+> 如果 `python` 命令不可用，请尝试 `python3`；如果 `docker-compose` 不可用，请使用 `docker compose`（空格替换连字符）。
+
+---
+
+### 1. 启动基础设施（Kafka + ClickHouse）
+
+在项目根目录执行：
 
 ```bash
 docker-compose up -d
 ```
 
-这将启动：
-- **Kafka** on `localhost:9092/9093`（KRaft 模式，无需 Zookeeper）
-- **ClickHouse** on `localhost:8123`/`9000`（自动执行 init.sql 建表）
+> 首次启动需要拉取镜像，约 3-5 分钟。如果遇到 WSL 报错，请确保 Docker Desktop 已切换到 WSL2 后端。
 
-验证：
+#### 1.1 等待容器就绪
 
 ```bash
-curl http://localhost:8123/ping      # 应返回 Ok
+# 查看容器状态，STATUS 应显示 Up（healthy 或 running）
+docker ps
 ```
 
-### 2. 启动后端服务
+预期输出：
+
+```
+CONTAINER ID   IMAGE                              STATUS          PORTS
+xxxxxxxxxx     confluentinc/cp-kafka:7.5.0         Up XX seconds   0.0.0.0:9092-9093->9092-9093/tcp
+xxxxxxxxxx     clickhouse/clickhouse-server:23.8   Up XX seconds   0.0.0.0:8123->8123/tcp, 0.0.0.0:9000->9000/tcp
+```
+
+#### 1.2 验证 ClickHouse
 
 ```bash
-cd backend
-pip install -r requirements.txt
-python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+curl http://localhost:8123/ping
+# 预期输出: Ok
 ```
 
-验证：
+#### 1.3 确认数据表已自动创建
 
 ```bash
-curl http://localhost:8000/health    # 应返回 {"status":"ok"}
+curl http://localhost:8123/?query=SHOW+TABLES
 ```
 
-### 3. 启动前端
+预期输出应包含 6 张表：
+
+```
+agent_traces
+llm_metrics
+model_stats_daily
+prompt_logs
+sessions
+tool_calls
+tool_stats
+```
+
+> 所有表由 `docker/clickhouse/init.sql` 在容器首次启动时自动创建。如果未显示，请检查 Docker 日志：`docker logs agent-insight-clickhouse`
+
+#### 1.4 验证 Kafka
 
 ```bash
-cd frontend
-npm install
-npm run dev
+# 查看 Kafka 容器日志，确认启动成功
+docker logs agent-insight-kafka 2>&1 | grep -i "started"
 ```
 
-访问 http://localhost:3000
+> Kafka 使用 KRaft 模式运行，无需 Zookeeper。Topic `agent-logs` 由 `KAFKA_AUTO_CREATE_TOPICS_ENABLE=true` 自动创建。
 
-### 4. 运行 SDK 示例验证全链路
+#### 遇到问题？
+
+- **Docker 启动失败（WSL 报错）**：确保在 Docker Desktop Settings → General 中，WSL2 后端已启用
+- **端口被占用**：修改 `docker-compose.yml` 中的端口映射
+- **拉取镜像缓慢**：可在 Docker Desktop Settings → Docker Engine 中配置国内镜像源
+
+---
+
+### 2. 安装并验证 SDK
 
 ```bash
 cd sdk
 pip install -e .
-python examples/lesson1_simple_agent.py     # 第1课演示
-python examples/lesson3_sdk_demo.py         # 第3课 SDK 完整演示
-python tests/test_agent_simulation.py       # 模拟测试
 ```
+
+> `-e` 表示可编辑安装，修改 SDK 代码无需重新安装。
+
+#### 2.1 验证安装
+
+```bash
+python -c "from agent_insight_sdk import TraceContext, ToolSDK, TraceAPI, AsyncBatchUploader; print('SDK OK')"
+```
+
+预期输出：`SDK OK`
+
+---
+
+### 3. 启动后端服务
+
+打开一个新的终端窗口：
+
+```bash
+cd backend
+```
+
+#### 3.1 创建虚拟环境（推荐）
+
+```bash
+# 创建虚拟环境
+python -m venv venv
+
+# 激活虚拟环境
+# Windows:
+venv\Scripts\activate
+# macOS / Linux:
+source venv/bin/activate
+```
+
+#### 3.2 安装依赖
+
+```bash
+pip install -r requirements.txt
+```
+
+依赖清单：`fastapi`、`uvicorn`、`aiokafka`、`clickhouse-driver`、`pydantic`、`pydantic-settings`、`httpx`
+
+#### 3.3 启动服务
+
+```bash
+python -m uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+启动成功后应看到：
+
+```
+INFO:     Started server process [xxxxx]
+INFO:     Waiting for application startup.
+INFO:     Kafka producer initialized
+INFO:     Kafka consumer started, topic: agent-logs
+INFO:     Application startup complete.
+INFO:     Uvicorn running on http://0.0.0.0:8000
+```
+
+#### 3.4 验证后端
+
+```bash
+# 健康检查
+curl http://localhost:8000/health
+# 预期输出: {"status":"ok"}
+
+# 查看 API 文档（浏览器打开）
+# http://localhost:8000/docs
+```
+
+#### 可能遇到的错误
+
+- **`ModuleNotFoundError: No module named 'app.main'`**：确认当前目录是 `d:\agent-observability\backend`，且 `app/main.py` 存在
+- **Kafka 连接失败**：确认 Docker 容器已启动（执行 `docker ps` 检查）
+- **ClickHouse 写入失败（Table doesn't exist）**：确认 ClickHouse 容器已运行并且 init.sql 已执行
+
+---
+
+### 4. 启动前端
+
+再打开一个新的终端窗口：
+
+```bash
+cd frontend
+```
+
+#### 4.1 安装依赖
+
+```bash
+npm install
+```
+
+> 首次安装约需 1-2 分钟。如果安装卡住，可以尝试 `npm install --legacy-peer-deps`。
+
+#### 4.2 启动开发服务器
+
+```bash
+npm run dev
+```
+
+启动成功后会显示：
+
+```
+VITE v5.x.x  ready in xxx ms
+
+  ➜  Local:   http://localhost:3000/
+  ➜  Network: use --host to expose
+```
+
+#### 4.3 验证前端
+
+浏览器访问 http://localhost:3000，应看到：
+
+- 左侧深色侧边栏，显示 7 个导航菜单（链路跟踪 / 时间线 / Prompt 回放 / Session 会话 / 模型效能对比 / 统计分析 / 排行榜）
+- 右侧主内容区，默认显示链路跟踪页面
+
+> 前端通过 Vite 代理将 `/api` 请求转发到后端 `http://localhost:8000`，无需额外配置。
+
+---
+
+### 5. 运行示例验证全链路
+
+回到项目根目录，再打开一个新终端：
+
+```bash
+cd sdk
+```
+
+#### 5.1 第 1 课演示（无埋点简单 Agent）
+
+```bash
+python examples/lesson1_simple_agent.py
+```
+
+在终端中观察 Agent 执行流程日志（LLM 调用、Tool 计算、打印输出）。
+
+#### 5.2 第 3 课演示（SDK 完整功能）
+
+```bash
+python examples/lesson3_sdk_demo.py
+```
+
+观察输出中的 span 上报日志。该脚本会：
+
+1. 演示 `OpenAIInterceptor` LLM 调用自动拦截
+2. 演示 `ToolSDK` 装饰器自动埋点 Tool 调用
+3. 演示 `TraceAPI` 显式 startTrace/startSpan/endSpan
+
+#### 5.3 模拟测试（发送模拟数据）
+
+```bash
+python tests/test_agent_simulation.py
+```
+
+该脚本会上报模拟的 Trace 和 Metrics 数据到后端。
+
+#### 5.4 在 Dashboard 查看数据
+
+回到浏览器 http://localhost:3000，依次查看：
+
+| 页面 | 路由 | 应看到的内容 |
+|------|------|------------|
+| 链路跟踪 | `/` | 下拉框中选择一条 trace_id，查看瀑布图 |
+| 时间线 | `/timeline` | 选中链路后看到按时间排列的 Span 卡片 |
+| Prompt 回放 | `/prompt-replay` | LLM 的 Prompt/Response 和 Tool 调用记录 |
+| Session 会话 | `/sessions` | Session 列表、汇总统计、单击可查看关联链路 |
+| 模型效能对比 | `/metrics` | 多模型的 Prefill/Decode/TPS 柱状图 |
+| 统计分析 | `/stats` | Token 分布 + 成本饼图 + 性能折线图 |
+| 排行榜 | `/leaderboard` | 最慢 Tool / Token 消耗 / 失败次数排行 |
+
+> 如果没有数据，请先执行 5.3 的模拟测试。如果后端未启动，前端页面会显示"加载中..."。
+
+---
+
+### 6. 一键终止
+
+在各自的终端窗口中按 `Ctrl + C` 停止：
+
+1. 前端 dev server（`npm run dev`）
+2. 后端 uvicorn（`python -m uvicorn ...`）
+
+停止 Docker 基础设施：
+
+```bash
+docker-compose down
+```
+
+> 如需保留数据，下次使用 `docker-compose up -d` 即可恢复。如需清理所有数据，执行 `docker-compose down -v`。
 
 ## API 接口一览
 

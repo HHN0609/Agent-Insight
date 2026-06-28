@@ -7,7 +7,7 @@ from typing import Optional
 
 from fastapi import APIRouter, Query
 
-from ..clickhouse.client import query_traces
+from ..clickhouse.client import query_traces, query_sessions
 
 logger = logging.getLogger(__name__)
 
@@ -34,6 +34,32 @@ async def get_traces(
         }
     except Exception as e:
         logger.error(f"Failed to query traces: {e}")
+        return {
+            "status": "error",
+            "message": str(e),
+            "data": [],
+        }
+
+
+@router.get("/sessions")
+async def get_sessions(
+    agent_name: Optional[str] = Query(None, description="按 Agent 名称筛选"),
+    limit: int = Query(100, ge=1, le=1000, description="返回数量限制"),
+):
+    """
+    查询 Session 会话列表
+
+    支持按 Agent 名称、Session/模型等多维度筛选
+    """
+    try:
+        sessions = await query_sessions(limit=limit, agent_name=agent_name)
+        return {
+            "status": "success",
+            "count": len(sessions),
+            "data": sessions,
+        }
+    except Exception as e:
+        logger.error(f"Failed to query sessions: {e}")
         return {
             "status": "error",
             "message": str(e),

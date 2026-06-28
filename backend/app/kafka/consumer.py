@@ -1,5 +1,7 @@
 """
 Kafka 消费者 - 消费原始日志并写入 ClickHouse
+
+支持的数据类型：trace / llm_metrics / prompt / tool_call / session
 """
 
 import asyncio
@@ -23,6 +25,10 @@ logger = logging.getLogger(__name__)
 _consumer: AIOKafkaConsumer = None
 _consumer_task: asyncio.Task = None
 
+BATCH_SIZE = 50
+
+# ---- 消费者生命周期 ----
+
 
 async def start_consumer() -> None:
     """启动 Kafka 消费者"""
@@ -40,10 +46,7 @@ async def start_consumer() -> None:
         )
         await _consumer.start()
         logger.info(f"Kafka consumer started, topic: {settings.kafka_topic}")
-
-        # 启动消费循环
         _consumer_task = asyncio.create_task(consume_loop())
-
     except Exception as e:
         logger.error(f"Failed to start Kafka consumer: {e}")
         raise
@@ -66,31 +69,52 @@ async def stop_consumer() -> None:
         logger.info("Kafka consumer stopped")
 
 
+# ---- 消息消费主循环 ----
+
+
 async def consume_loop() -> None:
-    """消费循环"""
-    trace_batch: List[Dict[str, Any]] = []
-    metrics_batch: List[Dict[str, Any]] = []
-    batch_size = 50
+    """消费循环：按数据类型分流到 ClickHouse 对应表"""
+    batches: Dict[str, List[Dict[str, Any]]] = {
+        "trace": [],
+        "metrics": [],
+        "prompt": [],
+        "tool_call": [],
+        "session": [],
+    }
+
+    flush_map = {
+        "trace": (insert_traces, flush_traces),
+        "metrics": (insert_metrics, flush_metrics),
+        "prompt": (insert_prompts, flush_prompts),
+        "tool_call": (insert_tool_calls, flush_tool_calls),
+        "session": (insert_sessions, flush_sessions),
+    }
 
     try:
         async for msg in _consumer:
             data = msg.value
+            items = data if isinstance(data, list) else [data]
 
-            # 数据可能是一个批次
-            if isinstance(data, list):
-                for item in data:
-                    process_item(item, trace_batch, metrics_batch)
-            else:
-                process_item(data, trace_batch, metrics_batch)
+            for item in items:
+                span_type = item.get("span_type", "trace")
+                parsed = parse_item(item)
 
-            # 达到批量阈值时写入 ClickHouse
-            if len(trace_batch) >= batch_size:
-                await flush_traces(trace_batch)
-                trace_batch = []
+                if span_type == "llm_metrics":
+                    batches["metrics"].append(parsed)
+                elif span_type == "prompt":
+                    batches["prompt"].append(parsed)
+                elif span_type == "tool_call":
+                    batches["tool_call"].append(parsed)
+                elif span_type == "session":
+                    batches["session"].append(parsed)
+                else:
+                    batches["trace"].append(parsed)
 
-            if len(metrics_batch) >= batch_size:
-                await flush_metrics(metrics_batch)
-                metrics_batch = []
+            # 批量刷新
+            for key, batch in batches.items():
+                if len(batch) >= BATCH_SIZE:
+                    await flush_map[key][1](batch)
+                    batches[key] = []
 
     except asyncio.CancelledError:
         logger.info("Consumer loop cancelled")
@@ -99,79 +123,154 @@ async def consume_loop() -> None:
         raise
 
 
-def process_item(
-    item: Dict[str, Any],
-    trace_batch: List[Dict[str, Any]],
-    metrics_batch: List[Dict[str, Any]],
-) -> None:
-    """处理单条数据，分类到对应的批次"""
-    span_type = item.get("span_type", "trace")
+# ---- 数据解析 ----
 
-    if span_type == "llm_metrics":
-        # 提取 llm_metrics 字段
-        attrs = item.get("attributes", {})
-        metrics_batch.append({
-            "trace_id": item["trace_id"],
-            "span_id": item["span_id"],
-            "model_name": attrs.get("model_name", "unknown"),
-            "prefill_ms": attrs.get("prefill_ms", 0),
-            "decode_ms": attrs.get("decode_ms", 0),
-            "input_tokens": attrs.get("input_tokens", 0),
-            "output_tokens": attrs.get("output_tokens", 0),
-            "tps": attrs.get("tps", 0),
-            "cost_usd": calculate_cost(attrs.get("model_name", ""), attrs.get("input_tokens", 0), attrs.get("output_tokens", 0)),
-        })
-    else:
-        # trace 数据
-        trace_batch.append({
-            "trace_id": item["trace_id"],
-            "span_id": item["span_id"],
-            "parent_span_id": item.get("parent_span_id", ""),
-            "name": item.get("name", ""),
-            "start_time": item.get("start_time", ""),
-            "end_time": item.get("end_time", ""),
-            "attributes": json.dumps(item.get("attributes", {})),
-        })
+
+def parse_item(item: Dict[str, Any]) -> Dict[str, Any]:
+    """将原始 item 解析为目标表字段"""
+    span_type = item.get("span_type", "trace")
+    parse_fn = PARSE_MAP.get(span_type, parse_trace)
+    return parse_fn(item)
+
+
+def parse_trace(item: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "trace_id": item["trace_id"],
+        "span_id": item["span_id"],
+        "parent_span_id": item.get("parent_span_id", ""),
+        "name": item.get("name", ""),
+        "start_time": item.get("start_time", ""),
+        "end_time": item.get("end_time", ""),
+        "attributes": json.dumps(item.get("attributes", {})),
+    }
+
+
+def _extract(attrs: dict, key: str, default: Any = 0) -> Any:
+    """优先从 item 顶层读取，然后从 attributes 中回退"""
+    return attrs.get(key, default)
+
+
+def parse_llm_metrics(item: Dict[str, Any]) -> Dict[str, Any]:
+    attrs = item.get("attributes", {})
+    model = item.get("model_name") or attrs.get("model_name", "unknown")
+    input_tokens = item.get("input_tokens") or attrs.get("input_tokens", 0)
+    output_tokens = item.get("output_tokens") or attrs.get("output_tokens", 0)
+    return {
+        "trace_id": item["trace_id"],
+        "span_id": item["span_id"],
+        "model_name": model,
+        "prefill_ms": item.get("prefill_ms") or attrs.get("prefill_ms", 0),
+        "decode_ms": item.get("decode_ms") or attrs.get("decode_ms", 0),
+        "input_tokens": input_tokens,
+        "output_tokens": output_tokens,
+        "tps": item.get("tps") or attrs.get("tps", 0),
+        "cost_usd": calculate_cost(model, input_tokens, output_tokens),
+    }
+
+
+def parse_prompt(item: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "trace_id": item["trace_id"],
+        "span_id": item["span_id"],
+        "model_name": item.get("model_name", "unknown"),
+        "prompt": item.get("prompt", ""),
+        "response": item.get("response", ""),
+        "input_tokens": item.get("input_tokens", 0),
+        "output_tokens": item.get("output_tokens", 0),
+        "latency_ms": item.get("latency_ms", 0),
+        "stream": item.get("stream", False),
+        "status": item.get("status", "success"),
+        "error": item.get("error", ""),
+    }
+
+
+def parse_tool_call(item: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "trace_id": item["trace_id"],
+        "span_id": item["span_id"],
+        "tool_name": item.get("tool_name", "unknown"),
+        "tool_type": item.get("tool_type", "generic"),
+        "input_data": item.get("input_data", "{}"),
+        "output_data": item.get("output_data", "{}"),
+        "duration_ms": item.get("duration_ms", 0),
+        "status": item.get("status", "success"),
+        "error": item.get("error", ""),
+    }
+
+
+def parse_session(item: Dict[str, Any]) -> Dict[str, Any]:
+    return {
+        "session_id": item["session_id"],
+        "trace_id": item["trace_id"],
+        "agent_name": item.get("agent_name", ""),
+        "user_input": item.get("user_input", ""),
+        "final_response": item.get("final_response", ""),
+        "total_spans": item.get("total_spans", 0),
+        "total_tokens": item.get("total_tokens", 0),
+        "total_cost_usd": item.get("total_cost_usd", 0),
+        "duration_ms": item.get("duration_ms", 0),
+        "status": item.get("status", "completed"),
+    }
+
+
+PARSE_MAP = {
+    "trace": parse_trace,
+    "llm_metrics": parse_llm_metrics,
+    "prompt": parse_prompt,
+    "tool_call": parse_tool_call,
+    "session": parse_session,
+}
+
+
+# ---- Token 成本计算 ----
 
 
 def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
     """计算虚拟 Token 成本（美元）"""
-    # 简化的成本计算模型
     cost_map = {
-        "gpt-4": (0.03, 0.06),      # (input_cost_per_1k, output_cost_per_1k)
+        "gpt-4": (0.03, 0.06),
         "gpt-4-turbo": (0.01, 0.03),
         "gpt-3.5-turbo": (0.0005, 0.0015),
         "claude-3-opus": (0.015, 0.075),
         "claude-3-sonnet": (0.003, 0.015),
         "claude-3-haiku": (0.00025, 0.00125),
     }
-
-    # 查找匹配的成本
     for key, (input_cost, output_cost) in cost_map.items():
         if key in model_name.lower():
-            return (input_tokens / 1000 * input_cost) + (output_tokens / 1000 * output_cost)
-
-    # 默认成本
+            return (input_tokens / 1000 * input_cost) + (
+                output_tokens / 1000 * output_cost
+            )
     return (input_tokens / 1000 * 0.001) + (output_tokens / 1000 * 0.002)
 
 
-async def flush_traces(batch: List[Dict[str, Any]]) -> None:
-    """刷新 trace 数据到 ClickHouse"""
+# ---- 批量写入 ----
+
+
+async def _flush(batch: List[dict], insert_fn, label: str) -> None:
     if not batch:
         return
     try:
-        await insert_traces(batch)
-        logger.debug(f"Flushed {len(batch)} traces to ClickHouse")
+        await insert_fn(batch)
+        logger.debug(f"Flushed {len(batch)} {label} to ClickHouse")
     except Exception as e:
-        logger.error(f"Failed to flush traces: {e}")
+        logger.error(f"Failed to flush {label}: {e}")
 
 
-async def flush_metrics(batch: List[Dict[str, Any]]) -> None:
-    """刷新 metrics 数据到 ClickHouse"""
-    if not batch:
-        return
-    try:
-        await insert_metrics(batch)
-        logger.debug(f"Flushed {len(batch)} metrics to ClickHouse")
-    except Exception as e:
-        logger.error(f"Failed to flush metrics: {e}")
+async def flush_traces(batch: List[dict]) -> None:
+    await _flush(batch, insert_traces, "traces")
+
+
+async def flush_metrics(batch: List[dict]) -> None:
+    await _flush(batch, insert_metrics, "metrics")
+
+
+async def flush_prompts(batch: List[dict]) -> None:
+    await _flush(batch, insert_prompts, "prompts")
+
+
+async def flush_tool_calls(batch: List[dict]) -> None:
+    await _flush(batch, insert_tool_calls, "tool_calls")
+
+
+async def flush_sessions(batch: List[dict]) -> None:
+    await _flush(batch, insert_sessions, "sessions")

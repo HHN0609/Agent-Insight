@@ -9,13 +9,14 @@ from .api.collect import router as collect_router
 from .api.traces import router as traces_router
 from .api.metrics import router as metrics_router
 from .api.prompts import router as prompts_router
+from .api.leaderboard import router as leaderboard_router
 from .kafka.consumer import start_consumer, stop_consumer
 from .kafka.producer import init_producer, close_producer
 
 app = FastAPI(
     title="Agent-Insight Backend",
     description="AI Agent 可观测性后端服务",
-    version="0.2.0",
+    version="0.3.0",
 )
 
 # CORS 配置
@@ -32,6 +33,7 @@ app.include_router(collect_router, prefix="/api/v1")
 app.include_router(traces_router, prefix="/api/v1")
 app.include_router(metrics_router, prefix="/api/v1")
 app.include_router(prompts_router, prefix="/api/v1")
+app.include_router(leaderboard_router, prefix="/api/v1")
 
 
 @app.on_event("startup")

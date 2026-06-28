@@ -58,8 +58,7 @@ docker-compose up -d
 ```
 
 这将启动：
-- Zookeeper (端口 2181)
-- Kafka (端口 9092/9093)
+- Kafka (端口 9092/9093) - 使用 KRaft 模式，无需 Zookeeper
 - ClickHouse (端口 8123/9000)
 
 ### 2. 安装 SDK

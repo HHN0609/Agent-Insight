@@ -3,28 +3,25 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer,
 } from 'recharts'
+import type { LlmMetric, ApiResponse } from '../types'
 
 const API_BASE = '/api/v1'
 
 function MetricsCompare() {
-  const [metrics, setMetrics] = useState([])
+  const [metrics, setMetrics] = useState<LlmMetric[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch(`${API_BASE}/metrics/compare`)
-      .then(res => res.json())
+      .then(res => res.json() as Promise<ApiResponse<LlmMetric>>)
       .then(data => {
-        if (data.status === 'success') {
-          setMetrics(data.data || [])
-        }
+        if (data.status === 'success') setMetrics(data.data || [])
       })
       .catch(err => console.error('Failed to load metrics:', err))
       .finally(() => setLoading(false))
   }, [])
 
-  if (loading) {
-    return <div className="loading">加载中...</div>
-  }
+  if (loading) return <div className="loading">加载中...</div>
 
   if (metrics.length === 0) {
     return (
@@ -35,18 +32,14 @@ function MetricsCompare() {
     )
   }
 
-  // 汇总统计
   const totalRequests = metrics.reduce((sum, m) => sum + m.total_requests, 0)
   const totalCost = metrics.reduce((sum, m) => sum + m.total_cost_usd, 0)
-  const avgTps = metrics.length > 0
-    ? metrics.reduce((sum, m) => sum + m.avg_tps, 0) / metrics.length
-    : 0
+  const avgTps = metrics.reduce((sum, m) => sum + m.avg_tps, 0) / metrics.length
 
   return (
     <div>
       <h2 className="page-title">多模型效能对比 (Evaluation View)</h2>
 
-      {/* 汇总卡片 */}
       <div className="metrics-grid">
         <div className="metric-card">
           <h3>总请求数</h3>
@@ -66,7 +59,6 @@ function MetricsCompare() {
         </div>
       </div>
 
-      {/* Prefill 延迟对比 */}
       <div className="chart-container">
         <h3>平均 Prefill 延迟 (ms)</h3>
         <ResponsiveContainer width="100%" height={300}>
@@ -82,7 +74,6 @@ function MetricsCompare() {
         </ResponsiveContainer>
       </div>
 
-      {/* TPS 对比 */}
       <div className="chart-container">
         <h3>平均 Decode 速度 (TPS - tokens/s)</h3>
         <ResponsiveContainer width="100%" height={300}>
@@ -98,7 +89,6 @@ function MetricsCompare() {
         </ResponsiveContainer>
       </div>
 
-      {/* 详细数据表 */}
       <div className="chart-container">
         <h3>详细数据</h3>
         <table className="data-table">

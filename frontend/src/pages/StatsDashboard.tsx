@@ -3,22 +3,20 @@ import {
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Legend,
   ResponsiveContainer, LineChart, Line, PieChart, Pie, Cell,
 } from 'recharts'
+import type { LlmMetric, ApiResponse, ChartData } from '../types'
 
 const API_BASE = '/api/v1'
-
 const COLORS = ['#6366f1', '#8b5cf6', '#a855f7', '#d946ef', '#ec4899', '#f43f5e']
 
 function StatsDashboard() {
-  const [metrics, setMetrics] = useState([])
+  const [metrics, setMetrics] = useState<LlmMetric[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch(`${API_BASE}/metrics/compare`)
-      .then(res => res.json())
+      .then(res => res.json() as Promise<ApiResponse<LlmMetric>>)
       .then(data => {
-        if (data.status === 'success') {
-          setMetrics(data.data || [])
-        }
+        if (data.status === 'success') setMetrics(data.data || [])
       })
       .catch(err => console.error('Failed to load metrics:', err))
       .finally(() => setLoading(false))
@@ -35,28 +33,19 @@ function StatsDashboard() {
     )
   }
 
-  // 汇总数据
   const totalRequests = metrics.reduce((sum, m) => sum + m.total_requests, 0)
   const totalTokens = metrics.reduce((sum, m) => sum + m.total_input_tokens + m.total_output_tokens, 0)
   const totalCost = metrics.reduce((sum, m) => sum + m.total_cost_usd, 0)
-  const avgTps = metrics.length > 0
-    ? metrics.reduce((sum, m) => sum + m.avg_tps, 0) / metrics.length
-    : 0
-  const avgPrefill = metrics.length > 0
-    ? metrics.reduce((sum, m) => sum + m.avg_prefill_ms, 0) / metrics.length
-    : 0
-  const avgDecode = metrics.length > 0
-    ? metrics.reduce((sum, m) => sum + m.avg_decode_ms, 0) / metrics.length
-    : 0
+  const avgTps = metrics.reduce((sum, m) => sum + m.avg_tps, 0) / metrics.length
+  const avgPrefill = metrics.reduce((sum, m) => sum + m.avg_prefill_ms, 0) / metrics.length
+  const avgDecode = metrics.reduce((sum, m) => sum + m.avg_decode_ms, 0) / metrics.length
 
-  // Token 分布数据
   const tokenDistribution = metrics.map(m => ({
     name: m.model_name,
     input: m.total_input_tokens,
     output: m.total_output_tokens,
   }))
 
-  // 成本分布数据
   const costDistribution = metrics.map(m => ({
     name: m.model_name,
     value: m.total_cost_usd,
@@ -66,7 +55,6 @@ function StatsDashboard() {
     <div>
       <h2 className="page-title">统计分析 (Stats Dashboard)</h2>
 
-      {/* 汇总卡片 */}
       <div className="metrics-grid">
         <div className="metric-card">
           <h3>总请求数</h3>
@@ -94,7 +82,7 @@ function StatsDashboard() {
         </div>
       </div>
 
-      {/* Token 分布图 */}
+      {/* Token 分布 */}
       <div className="chart-container">
         <h3>Token 分布 (Input vs Output)</h3>
         <ResponsiveContainer width="100%" height={300}>
@@ -102,9 +90,7 @@ function StatsDashboard() {
             <CartesianGrid strokeDasharray="3 3" stroke="#272a35" />
             <XAxis dataKey="name" stroke="#71717a" />
             <YAxis stroke="#71717a" />
-            <Tooltip
-              contentStyle={{ background: '#161822', border: '1px solid #272a35', borderRadius: 8 }}
-            />
+            <Tooltip contentStyle={{ background: '#161822', border: '1px solid #272a35', borderRadius: 8 }} />
             <Legend />
             <Bar dataKey="input" fill="#6366f1" name="Input Tokens" stackId="a" />
             <Bar dataKey="output" fill="#8b5cf6" name="Output Tokens" stackId="a" />
@@ -127,13 +113,13 @@ function StatsDashboard() {
               fill="#8884d8"
               dataKey="value"
             >
-              {costDistribution.map((entry, index) => (
+              {costDistribution.map((_, index) => (
                 <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
               ))}
             </Pie>
             <Tooltip
               contentStyle={{ background: '#161822', border: '1px solid #272a35', borderRadius: 8 }}
-              formatter={(value) => `$${value.toFixed(4)}`}
+              formatter={(value: number) => `$${value.toFixed(4)}`}
             />
           </PieChart>
         </ResponsiveContainer>
@@ -147,9 +133,7 @@ function StatsDashboard() {
             <CartesianGrid strokeDasharray="3 3" stroke="#272a35" />
             <XAxis dataKey="model_name" stroke="#71717a" />
             <YAxis stroke="#71717a" />
-            <Tooltip
-              contentStyle={{ background: '#161822', border: '1px solid #272a35', borderRadius: 8 }}
-            />
+            <Tooltip contentStyle={{ background: '#161822', border: '1px solid #272a35', borderRadius: 8 }} />
             <Legend />
             <Line type="monotone" dataKey="avg_prefill_ms" stroke="#6366f1" name="Prefill (ms)" />
             <Line type="monotone" dataKey="avg_decode_ms" stroke="#8b5cf6" name="Decode (ms)" />

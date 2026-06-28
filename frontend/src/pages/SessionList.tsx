@@ -1,44 +1,40 @@
 import { useState, useEffect } from 'react'
+import type { Session, Trace, ApiResponse } from '../types'
 
 const API_BASE = '/api/v1'
 
 function SessionList() {
-  const [sessions, setSessions] = useState([])
-  const [selectedSession, setSelectedSession] = useState(null)
-  const [traces, setTraces] = useState([])
+  const [sessions, setSessions] = useState<Session[]>([])
+  const [selectedSession, setSelectedSession] = useState<string | null>(null)
+  const [traces, setTraces] = useState<Trace[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     fetch(`${API_BASE}/sessions`)
-      .then(res => res.json())
+      .then(res => res.json() as Promise<ApiResponse<Session>>)
       .then(data => {
-        if (data.status === 'success') {
-          setSessions(data.data || [])
-        }
+        if (data.status === 'success') setSessions(data.data || [])
       })
       .catch(err => console.error('Failed to load sessions:', err))
       .finally(() => setLoading(false))
   }, [])
 
-  const viewSessionDetail = (sessionId, traceId) => {
+  const viewSessionDetail = (sessionId: string, traceId: string): void => {
     setSelectedSession(sessionId)
     fetch(`${API_BASE}/traces?trace_id=${traceId}`)
-      .then(res => res.json())
+      .then(res => res.json() as Promise<ApiResponse<Trace>>)
       .then(data => {
-        if (data.status === 'success') {
-          setTraces(data.data || [])
-        }
+        if (data.status === 'success') setTraces(data.data || [])
       })
       .catch(err => console.error('Failed to load traces:', err))
   }
 
-  const formatTime = (ts) => {
+  const formatTime = (ts: string | undefined): string => {
     if (!ts) return '-'
-    const d = new Date(ts)
-    return d.toLocaleString()
+    return new Date(ts).toLocaleString()
   }
 
-  const formatDuration = (ms) => {
+  const formatDuration = (ms: number | undefined): string => {
     if (!ms) return '0ms'
     if (ms < 1000) return `${ms.toFixed(0)}ms`
     return `${(ms / 1000).toFixed(1)}s`
@@ -52,7 +48,6 @@ function SessionList() {
         <div className="loading">加载中...</div>
       ) : (
         <div className="session-container">
-          {/* 汇总统计 */}
           <div className="metrics-grid">
             <div className="metric-card">
               <h3>总 Session</h3>
@@ -78,7 +73,6 @@ function SessionList() {
             </div>
           </div>
 
-          {/* Session 列表 */}
           <div className="session-table">
             <table className="data-table">
               <thead>
@@ -111,9 +105,7 @@ function SessionList() {
                       <td>{formatDuration(s.duration_ms)}</td>
                       <td>${(s.total_cost_usd || 0).toFixed(4)}</td>
                       <td>
-                        <span className={`badge ${s.status}`}>
-                          {s.status}
-                        </span>
+                        <span className={`badge ${s.status}`}>{s.status}</span>
                       </td>
                       <td>{formatTime(s.created_at)}</td>
                       <td>
@@ -131,7 +123,6 @@ function SessionList() {
             </table>
           </div>
 
-          {/* 选中的 Session 的 Trace 详情 */}
           {selectedSession && (
             <div className="detail-panel">
               <h3>Session {selectedSession.slice(0, 12)}... 的链路详情</h3>

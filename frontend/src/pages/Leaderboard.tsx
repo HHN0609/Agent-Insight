@@ -1,26 +1,37 @@
 import { useState, useEffect } from 'react'
+import type {
+  LeaderboardMetric,
+  SlowestToolItem,
+  MostTokensItem,
+  MostFailedItem,
+  LeaderboardItem,
+  ApiResponse,
+} from '../types'
 
 const API_BASE = '/api/v1'
 
-const METRIC_OPTIONS = [
+interface MetricOption {
+  value: LeaderboardMetric
+  label: string
+}
+
+const METRIC_OPTIONS: MetricOption[] = [
   { value: 'slowest_tool', label: '最慢 Tool 调用' },
   { value: 'most_tokens', label: 'Token 消耗排行榜' },
   { value: 'most_failed', label: '失败次数排行榜' },
 ]
 
 function Leaderboard() {
-  const [metric, setMetric] = useState('slowest_tool')
-  const [data, setData] = useState([])
+  const [metric, setMetric] = useState<LeaderboardMetric>('slowest_tool')
+  const [data, setData] = useState<LeaderboardItem[]>([])
   const [loading, setLoading] = useState(true)
 
   useEffect(() => {
     setLoading(true)
     fetch(`${API_BASE}/leaderboard?metric=${metric}&limit=15`)
-      .then(res => res.json())
+      .then(res => res.json() as Promise<ApiResponse<LeaderboardItem>>)
       .then(result => {
-        if (result.status === 'success') {
-          setData(result.data || [])
-        }
+        if (result.status === 'success') setData(result.data || [])
       })
       .catch(err => console.error('Failed to load leaderboard:', err))
       .finally(() => setLoading(false))
@@ -31,6 +42,7 @@ function Leaderboard() {
     if (data.length === 0) return <div className="loading">暂无数据</div>
 
     if (metric === 'slowest_tool') {
+      const items = data as SlowestToolItem[]
       return (
         <table className="data-table">
           <thead>
@@ -46,7 +58,7 @@ function Leaderboard() {
             </tr>
           </thead>
           <tbody>
-            {data.map((item, idx) => (
+            {items.map((item, idx) => (
               <tr key={idx}>
                 <td className="rank">{idx + 1}</td>
                 <td>{item.tool_name}</td>
@@ -66,6 +78,7 @@ function Leaderboard() {
     }
 
     if (metric === 'most_tokens') {
+      const items = data as MostTokensItem[]
       return (
         <table className="data-table">
           <thead>
@@ -79,7 +92,7 @@ function Leaderboard() {
             </tr>
           </thead>
           <tbody>
-            {data.map((item, idx) => (
+            {items.map((item, idx) => (
               <tr key={idx}>
                 <td className="rank">{idx + 1}</td>
                 <td>{item.model_name}</td>
@@ -95,6 +108,7 @@ function Leaderboard() {
     }
 
     if (metric === 'most_failed') {
+      const items = data as MostFailedItem[]
       return (
         <table className="data-table">
           <thead>
@@ -109,7 +123,7 @@ function Leaderboard() {
             </tr>
           </thead>
           <tbody>
-            {data.map((item, idx) => (
+            {items.map((item, idx) => (
               <tr key={idx}>
                 <td className="rank">{idx + 1}</td>
                 <td>{item.tool_name}</td>
@@ -124,6 +138,8 @@ function Leaderboard() {
         </table>
       )
     }
+
+    return null
   }
 
   return (

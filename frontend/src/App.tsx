@@ -7,6 +7,16 @@ import StatsDashboard from './pages/StatsDashboard'
 import SessionList from './pages/SessionList'
 import Leaderboard from './pages/Leaderboard'
 
+const navItems = [
+  { to: '/', label: '链路跟踪', end: true },
+  { to: '/timeline', label: '时间线' },
+  { to: '/prompt-replay', label: 'Prompt 回放' },
+  { to: '/sessions', label: 'Session 会话' },
+  { to: '/metrics', label: '模型效能对比' },
+  { to: '/stats', label: '统计分析' },
+  { to: '/leaderboard', label: '排行榜' },
+]
+
 function App() {
   return (
     <BrowserRouter>
@@ -14,27 +24,16 @@ function App() {
         <aside className="sidebar">
           <h1>Agent-Insight</h1>
           <nav>
-            <NavLink to="/" end className={({ isActive }) => isActive ? 'active' : ''}>
-              链路跟踪
-            </NavLink>
-            <NavLink to="/timeline" className={({ isActive }) => isActive ? 'active' : ''}>
-              时间线
-            </NavLink>
-            <NavLink to="/prompt-replay" className={({ isActive }) => isActive ? 'active' : ''}>
-              Prompt 回放
-            </NavLink>
-            <NavLink to="/sessions" className={({ isActive }) => isActive ? 'active' : ''}>
-              Session 会话
-            </NavLink>
-            <NavLink to="/metrics" className={({ isActive }) => isActive ? 'active' : ''}>
-              模型效能对比
-            </NavLink>
-            <NavLink to="/stats" className={({ isActive }) => isActive ? 'active' : ''}>
-              统计分析
-            </NavLink>
-            <NavLink to="/leaderboard" className={({ isActive }) => isActive ? 'active' : ''}>
-              排行榜
-            </NavLink>
+            {navItems.map(({ to, label, end }) => (
+              <NavLink
+                key={to}
+                to={to}
+                end={end}
+                className={({ isActive }) => isActive ? 'active' : ''}
+              >
+                {label}
+              </NavLink>
+            ))}
           </nav>
         </aside>
         <main className="main-content">

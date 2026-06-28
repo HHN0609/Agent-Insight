@@ -1,32 +1,31 @@
 import { useState, useEffect } from 'react'
+import type { Trace, TimelineItem, ApiResponse } from '../types'
 
 const API_BASE = '/api/v1'
 
 function Timeline() {
-  const [traces, setTraces] = useState([])
-  const [selectedTrace, setSelectedTrace] = useState(null)
-  const [timelineData, setTimelineData] = useState([])
+  const [traces, setTraces] = useState<Trace[]>([])
+  const [selectedTrace, setSelectedTrace] = useState<string | null>(null)
+  const [timelineData, setTimelineData] = useState<TimelineItem[]>([])
   const [loading, setLoading] = useState(true)
 
-  // 加载 trace 列表
   useEffect(() => {
     fetch(`${API_BASE}/traces`)
-      .then(res => res.json())
+      .then(res => res.json() as Promise<ApiResponse<Trace>>)
       .then(data => {
         if (data.status === 'success') {
-          const uniqueTraces = [...new Map(data.data.map(t => [t.trace_id, t])).values()]
-          setTraces(uniqueTraces)
+          const unique = [...new Map(data.data.map(t => [t.trace_id, t])).values()]
+          setTraces(unique)
         }
       })
       .catch(err => console.error('Failed to load traces:', err))
       .finally(() => setLoading(false))
   }, [])
 
-  // 加载选中的 trace 详情
   useEffect(() => {
     if (!selectedTrace) return
     fetch(`${API_BASE}/traces?trace_id=${selectedTrace}`)
-      .then(res => res.json())
+      .then(res => res.json() as Promise<ApiResponse<Trace>>)
       .then(data => {
         if (data.status === 'success') {
           setTimelineData(buildTimeline(data.data || []))
@@ -41,7 +40,7 @@ function Timeline() {
 
       <div className="trace-selector">
         <select
-          value={selectedTrace || ''}
+          value={selectedTrace ?? ''}
           onChange={e => setSelectedTrace(e.target.value)}
         >
           <option value="">选择一条链路...</option>
@@ -71,13 +70,11 @@ function Timeline() {
                   <div className="timeline-dot" />
                   <div className="timeline-content">
                     <div className="timeline-header">
-                      <span className={`timeline-badge ${item.type}`}>
-                        {item.type}
-                      </span>
+                      <span className={`timeline-badge ${item.type}`}>{item.type}</span>
                       <span className="timeline-name">{item.name}</span>
                       <span className="timeline-duration">{item.durationMs.toFixed(1)}ms</span>
                     </div>
-                    {item.attributes && Object.keys(item.attributes).length > 0 && (
+                    {Object.keys(item.attributes).length > 0 && (
                       <div className="timeline-attrs">
                         {Object.entries(item.attributes).map(([key, val]) => (
                           <span key={key} className="timeline-attr">
@@ -97,12 +94,11 @@ function Timeline() {
   )
 }
 
-function buildTimeline(traces) {
-  if (!traces || traces.length === 0) return []
+// ---- helpers ----
 
-  // 按开始时间排序
+function buildTimeline(traces: Trace[]): TimelineItem[] {
   const sorted = [...traces].sort(
-    (a, b) => new Date(a.start_time) - new Date(b.start_time)
+    (a, b) => new Date(a.start_time).getTime() - new Date(b.start_time).getTime(),
   )
 
   return sorted.map(t => {
@@ -110,10 +106,11 @@ function buildTimeline(traces) {
     const end = new Date(t.end_time).getTime()
     const durationMs = end - start
 
-    let type = 'trace'
-    const attrs = typeof t.attributes === 'string'
-      ? JSON.parse(t.attributes || '{}')
-      : (t.attributes || {})
+    let type: TimelineItem['type'] = 'trace'
+    const attrs: Record<string, unknown> =
+      typeof t.attributes === 'string'
+        ? JSON.parse(t.attributes || '{}')
+        : (t.attributes || {})
 
     if (t.name === 'llm_metrics' || attrs.model) type = 'llm'
     else if (t.name?.includes('tool')) type = 'tool'

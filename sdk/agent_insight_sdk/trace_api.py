@@ -117,6 +117,4 @@ class TraceAPI:
             loop = asyncio.get_running_loop()
             loop.create_task(self._uploader.submit(span))
         except RuntimeError:
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(self._uploader.submit(span))
-            loop.close()
+            asyncio.run(self._uploader.submit(span))

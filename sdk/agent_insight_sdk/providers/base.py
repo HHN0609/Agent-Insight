@@ -195,7 +195,9 @@ class LLMInterceptor:
         for adapter in self._adapters:
             if adapter.supports(client):
                 self._active_adapter = adapter
-                return adapter._wrap_call(client, self)
+                wrapped = adapter._wrap_call(client, self)
+                self._active_client = wrapped
+                return wrapped
         raise ValueError(
             f"未找到匹配的 Provider Adapter，client 类型: {type(client)}。"
             f"已注册 Adapter: {[a.provider_name for a in self._adapters]}"
@@ -204,9 +206,9 @@ class LLMInterceptor:
     def unwrap(self) -> None:
         """恢复原始客户端"""
         if self._active_adapter:
-            self._active_adapter._unwrap_client(
-                getattr(self, "_active_client", None)
-            )
+            self._active_adapter._unwrap_client(self._active_client)
+            self._active_client = None
+            self._active_adapter = None
 
     # ---- 内部交付报告 -----------------------------------------------------
 
@@ -275,19 +277,13 @@ class LLMInterceptor:
 
     def _submit(self, spans: List[SpanData]) -> None:
         """异步提交一批 span"""
-        loop = None
         try:
-            loop = asyncio.get_event_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-
-        if loop.is_running():
+            loop = asyncio.get_running_loop()
             for span in spans:
-                asyncio.ensure_future(self._uploader.submit(span))
-        else:
+                loop.create_task(self._uploader.submit(span))
+        except RuntimeError:
             async def _submit_all():
                 for span in spans:
                     await self._uploader.submit(span)
 
-            loop.run_until_complete(_submit_all())
+            asyncio.run(_submit_all())

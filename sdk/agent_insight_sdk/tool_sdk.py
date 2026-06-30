@@ -167,17 +167,6 @@ class ToolSDK:
         error: str = "",
     ) -> None:
         """上报 Tool 调用 span"""
-        attributes = {
-            "tool_name": tool_name,
-            "tool_type": tool_type,
-            "input": input_data,
-            "output": output_data,
-            "status": status,
-            "duration_ms": duration_ms,
-        }
-        if error:
-            attributes["error"] = error
-
         span = SpanData(
             trace_id=ctx.trace_id,
             span_id=ctx.span_id,
@@ -185,16 +174,21 @@ class ToolSDK:
             name=f"tool:{tool_name}",
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            span_type="trace",
-            attributes=attributes,
+            span_type="tool_call",
+            tool_name=tool_name,
+            tool_type=tool_type,
+            input_data=input_data,
+            output_data=output_data,
+            duration_ms=duration_ms,
+            status=status,
+            error=error,
         )
 
-        if asyncio.get_event_loop().is_running():
-            asyncio.create_task(self._uploader.submit(span))
-        else:
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(self._uploader.submit(span))
-            loop.close()
+        try:
+            loop = asyncio.get_running_loop()
+            loop.create_task(self._uploader.submit(span))
+        except RuntimeError:
+            asyncio.run(self._uploader.submit(span))
 
     @staticmethod
     def _safe_serialize(data: Any) -> str:

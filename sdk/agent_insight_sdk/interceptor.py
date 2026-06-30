@@ -1,19 +1,30 @@
 """
 LLM 拦截器模块 - 非侵入式拦截 OpenAI 客户端调用
+
+.. deprecated::
+    此文件已废弃，请使用 LLMInterceptor（来自 providers 模块）。
+    OpenAIInterceptor 已在 __init__.py 中别名到 LLMInterceptor。
 """
 
-import functools
+import asyncio
 import time
 from datetime import datetime
-from typing import Any, Callable, Optional
+from typing import Any
 
 from .context import TraceContext, get_current_context, set_current_context
 from .stream_monitor import MonitoredStream, StreamMonitor
 from .uploader import AsyncBatchUploader, SpanData
 
+import warnings
+
 
 class OpenAIInterceptor:
-    """OpenAI 客户端拦截器"""
+    """OpenAI 客户端拦截器 (已废弃)
+
+    .. deprecated::
+        请使用 ``LLMInterceptor(uploader).wrap(client)`` 替代
+        ``OpenAIInterceptor(uploader).patch(client)``。
+    """
 
     def __init__(self, uploader: AsyncBatchUploader):
         self._uploader = uploader
@@ -123,16 +134,7 @@ class OpenAIInterceptor:
         )
 
         # 异步提交
-        import asyncio
-        if asyncio.get_event_loop().is_running():
-            asyncio.create_task(self._uploader.submit(trace_span))
-            asyncio.create_task(self._uploader.submit(metrics_span))
-        else:
-            # 同步环境
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(self._uploader.submit(trace_span))
-            loop.run_until_complete(self._uploader.submit(metrics_span))
-            loop.close()
+        self._submit_spans([trace_span, metrics_span])
 
         return response
 
@@ -177,13 +179,19 @@ class OpenAIInterceptor:
             attributes={"model": model_name, "error": error},
         )
 
-        import asyncio
-        if asyncio.get_event_loop().is_running():
-            asyncio.create_task(self._uploader.submit(span))
-        else:
-            loop = asyncio.new_event_loop()
-            loop.run_until_complete(self._uploader.submit(span))
-            loop.close()
+        self._submit_spans([span])
+
+    def _submit_spans(self, spans: list) -> None:
+        """提交多个 span 到上报器"""
+        try:
+            loop = asyncio.get_running_loop()
+            for span in spans:
+                loop.create_task(self._uploader.submit(span))
+        except RuntimeError:
+            async def _submit_all():
+                for span in spans:
+                    await self._uploader.submit(span)
+            asyncio.run(_submit_all())
 
     class _StreamWrapper:
         """流式响应包装器，在迭代结束时上报数据"""
@@ -251,12 +259,10 @@ class OpenAIInterceptor:
                 },
             )
 
-            import asyncio
-            if asyncio.get_event_loop().is_running():
-                asyncio.create_task(self._uploader.submit(trace_span))
-                asyncio.create_task(self._uploader.submit(metrics_span))
-            else:
-                loop = asyncio.new_event_loop()
-                loop.run_until_complete(self._uploader.submit(trace_span))
-                loop.run_until_complete(self._uploader.submit(metrics_span))
-                loop.close()
+            try:
+                loop = asyncio.get_running_loop()
+                loop.create_task(self._uploader.submit(trace_span))
+                loop.create_task(self._uploader.submit(metrics_span))
+            except RuntimeError:
+                asyncio.run(self._uploader.submit(trace_span))
+                asyncio.run(self._uploader.submit(metrics_span))

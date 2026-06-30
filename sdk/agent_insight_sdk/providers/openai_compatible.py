@@ -116,23 +116,31 @@ class OpenAICompatibleAdapter(BaseProviderAdapter):
                 try:
                     return next(wself._stream)
                 except StopIteration:
-                    metrics = wself._monitor.get_metrics()
-                    end_time = datetime.utcnow()
-                    record = wself.extract(
-                        wself._kwargs, None, wself._perf_start, True
-                    )
-                    record.prefill_ms = metrics.prefill_ms
-                    record.decode_ms = metrics.decode_ms
-                    record.output_tokens = metrics.output_tokens
-                    record.tps = metrics.tps
-                    wself._interceptor._report(wself._ctx, record, wself._start_time, end_time)
+                    wself._finalize()
                     raise
 
-            def extract(wself, *args, **kw):
-                # delegate to adapter's extract
-                return OpenAICompatibleAdapter.extract(
-                    wself._interceptor._active_adapter, *args, **kw
+            def __aiter__(wself):
+                return wself
+
+            async def __anext__(wself):
+                try:
+                    return await wself._stream.__anext__()
+                except StopAsyncIteration:
+                    wself._finalize()
+                    raise
+
+            def _finalize(wself):
+                metrics = wself._monitor.get_metrics()
+                end_time = datetime.utcnow()
+                record = OpenAICompatibleAdapter.extract(
+                    wself._interceptor._active_adapter,
+                    wself._kwargs, None, wself._perf_start, True,
                 )
+                record.prefill_ms = metrics.prefill_ms
+                record.decode_ms = metrics.decode_ms
+                record.output_tokens = metrics.output_tokens
+                record.tps = metrics.tps
+                wself._interceptor._report(wself._ctx, record, wself._start_time, end_time)
 
         return StreamWrapper()
 

@@ -79,9 +79,9 @@ class StreamMonitor:
 
 
 class MonitoredStream:
-    """包装后的流式响应，自动记录指标"""
+    """包装后的流式响应，自动记录指标（同时支持同步和异步迭代）"""
 
-    def __init__(self, stream: Iterator, monitor: StreamMonitor):
+    def __init__(self, stream, monitor: StreamMonitor):
         self._stream = stream
         self._monitor = monitor
         self._is_first = True
@@ -105,4 +105,24 @@ class MonitoredStream:
 
             return chunk
         except StopIteration:
+            raise
+
+    def __aiter__(self):
+        return self
+
+    async def __anext__(self):
+        try:
+            chunk = await self._stream.__anext__()
+
+            if self._is_first:
+                self._monitor.record_first_chunk()
+                self._is_first = False
+
+            self._monitor.record_chunk(chunk)
+
+            if hasattr(chunk, "usage") and chunk.usage:
+                self._monitor.record_stream_usage(chunk.usage)
+
+            return chunk
+        except StopAsyncIteration:
             raise

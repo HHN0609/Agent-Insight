@@ -76,10 +76,21 @@ class AnthropicAdapter(BaseProviderAdapter):
     def _extract_prompt(self, kwargs: dict, record: LLMCallRecord) -> LLMCallRecord:
         messages = kwargs.get("messages", [])
         try:
-            user_msgs = [
-                m.get("content", "") for m in messages
-                if isinstance(m, dict) and m.get("role") == "user"
-            ]
+            user_msgs = []
+            for m in messages:
+                if not isinstance(m, dict) or m.get("role") != "user":
+                    continue
+                content = m.get("content", "")
+                if isinstance(content, list):
+                    # Anthropic 多模态格式: [{"type": "text", "text": "..."}, ...]
+                    text_parts = [
+                        block.get("text", "")
+                        for block in content
+                        if isinstance(block, dict) and block.get("type") == "text"
+                    ]
+                    user_msgs.append(" ".join(text_parts))
+                else:
+                    user_msgs.append(str(content))
             record.prompt_text = user_msgs[-1] if user_msgs else ""
         except Exception:
             pass
@@ -166,16 +177,29 @@ class AnthropicAdapter(BaseProviderAdapter):
                 try:
                     return next(s._s)
                 except StopIteration:
-                    m = s._m.get_metrics()
-                    r = AnthropicAdapter.extract(
-                        s._itc._active_adapter, s._kwargs, None, s._ps, True
-                    )
-                    r.prefill_ms = m.prefill_ms
-                    r.decode_ms = m.decode_ms
-                    r.output_tokens = m.output_tokens
-                    r.tps = m.tps
-                    s._itc._report(s._ctx, r, s._st, datetime.utcnow())
+                    s._finalize()
                     raise
+
+            def __aiter__(s):
+                return s
+
+            async def __anext__(s):
+                try:
+                    return await s._s.__anext__()
+                except StopAsyncIteration:
+                    s._finalize()
+                    raise
+
+            def _finalize(s):
+                m = s._m.get_metrics()
+                r = AnthropicAdapter.extract(
+                    s._itc._active_adapter, s._kwargs, None, s._ps, True
+                )
+                r.prefill_ms = m.prefill_ms
+                r.decode_ms = m.decode_ms
+                r.output_tokens = m.output_tokens
+                r.tps = m.tps
+                s._itc._report(s._ctx, r, s._st, datetime.utcnow())
 
         return AnthropicStreamWrapper()
 

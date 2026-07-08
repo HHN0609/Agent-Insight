@@ -155,11 +155,42 @@ python tests/test_api.py
 3. `/api/v1/traces` — 链路查询
 4. `/api/v1/metrics/compare` — 模型对比
 
-## 关键设计
+## Kafka 设计
 
-### Kafka 分流消费
+### Pull 模型
 
-Consumer 消费 Kafka 消息后，按 `span_type` 字段分流入 5 张 ClickHouse 表。批量阈值 50 条 + 每 5 秒强制刷新，兼顾吞吐和延迟。
+Kafka 采用**消费者主动拉取（Pull）模型**，Broker 不会主动推送消息：
+
+- **数据消费**：Consumer 通过 `poll()` 主动向 Broker 拉取消息，消费速度完全由 Consumer 控制，避免被压垮。
+- **心跳维持**：Consumer 定时发送心跳，Broker 据此判断存活状态。长时间无心跳会被踢出 Consumer Group 并触发 Rebalance。
+- **Rebalance 通知**：Consumer 加入/离开 Group 或 Partition 变化时，Group Coordinator 会**主动通知**所有 Consumer 触发 Rebalance —— 这是少数 Broker 主动推送的场景。
+- **长轮询（Long Polling）**：`poll()` 本质是长轮询。没有数据时 Broker 会 hold 住连接最多 `fetch.max.wait.ms`（默认 500ms），期间有数据到达则立即返回，避免空轮询开销。
+
+### Partition 数据模型
+
+一个 Partition 的数据由 **Segment 文件 + 索引文件 + Broker 元信息** 组成：
+
+```
+topic-0/
+├── 00000000000000000000.log        ← Segment 0 消息数据（顺序追加）
+├── 00000000000000000000.index      ← Segment 0 偏移量索引
+├── 00000000000000000000.timeindex  ← Segment 0 时间索引
+├── 00000000000000005000.log        ← Segment 1 消息数据
+├── 00000000000000005000.index
+├── 00000000000000005000.timeindex
+└── ...
+```
+
+每条消息的物理结构：`offset | timestamp | key | value | headers`
+
+关键点：
+- Commit Log 不是单一文件，而是由多个 Segment 组成（默认 1GB 或 7 天滚动）。
+- **消费进度 offset 不存储在 Partition 自身**，而是存入 Kafka 内部 Topic `__consumer_offsets`，因此不同 Consumer Group 可以独立消费同一 Partition。
+- Broker 侧元信息（Leader/Replica 分布、ISR 列表、Leader Epoch）存储在 ZooKeeper 或 KRaft 中，与数据文件分离。
+
+### 分流消费
+
+本项目的 Consumer 消费 Kafka 消息后，按 `span_type` 字段分流入 5 张 ClickHouse 表。批量阈值 50 条 + 每 5 秒强制刷新，兼顾吞吐和延迟。
 
 ### Token 成本计算
 

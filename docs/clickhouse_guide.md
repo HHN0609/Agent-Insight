@@ -1,4 +1,4 @@
-# ClickHouse 入门
+# ClickHouse 指南
 
 ---
 

@@ -326,10 +326,10 @@ agent-observability/
 ├── README.md                    # 项目说明
 ├── docker/
 │   └── clickhouse/init.sql      # 建表 + 物化视图
-├── docs/                        # 基础设施教程
-│   ├── clickhouse_tutorial.md
-│   ├── kafka_tutorial.md
-│   └── docker_tutorial.md
+├── docs/                        # 基础设施指南
+│   ├── clickhouse_guide.md
+│   ├── kafka_guide.md
+│   └── docker_guide.md
 ├── sdk/                         # Python 探针 SDK
 │   ├── setup.py
 │   └── agent_insight_sdk/

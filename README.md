@@ -97,8 +97,8 @@ agent-observability/
 │   │       ├── openai_compatible.py# OpenAI / DeepSeek / vLLM / Ollama 等
 │   │       └── anthropic.py        # Anthropic Claude
 │   ├── examples/
-│   │   ├── lesson1_simple_agent.py # 第1课：无埋点简单 Agent 演示
-│   │   └── lesson3_sdk_demo.py     # 第3课：SDK 完整功能演示
+│   │   ├── example_simple_agent.py # 阶段1：无埋点简单 Agent 示例
+│   │   └── example_sdk_demo.py     # 阶段3：SDK 完整功能示例
 │   ├── tests/
 │   │   └── test_agent_simulation.py
 │   ├── setup.py
@@ -361,18 +361,18 @@ VITE v5.x.x  ready in xxx ms
 cd sdk
 ```
 
-#### 5.1 第 1 课演示（无埋点简单 Agent）
+#### 5.1 阶段1 示例（无埋点简单 Agent）
 
 ```bash
-python examples/lesson1_simple_agent.py
+python examples/example_simple_agent.py
 ```
 
 在终端中观察 Agent 执行流程日志（LLM 调用、Tool 计算、打印输出）。
 
-#### 5.2 第 3 课演示（SDK 完整功能）
+#### 5.2 阶段3 示例（SDK 完整功能）
 
 ```bash
-python examples/lesson3_sdk_demo.py
+python examples/example_sdk_demo.py
 ```
 
 观察输出中的 span 上报日志。该脚本会：
@@ -525,18 +525,18 @@ response = client.chat.completions.create(
 | 统计分析 | `/stats` | 汇总卡片 + Token 分布柱状图 + 成本饼图 + 性能折线图 |
 | 排行榜 | `/leaderboard` | 最慢 Tool / Token 消耗 / 失败次数 三维度排行 |
 
-## 课程大纲
+## 开发路线图
 
 本项目按照以下 6 个阶段逐步构建：
 
-### 第 1 课 - AI Agent 与可观测系统概述
+### 阶段1 - AI Agent 与可观测系统概述
 
 - 使用 OpenAI API 搭建简单 Agent（用户输入 → LLM → 输出）
 - 为 Agent 增加 Tool（计算器 / 天气查询）
 - 打印执行流程日志，分析日志问题，引出可观测系统需求
-- **示例**: `sdk/examples/lesson1_simple_agent.py`
+- **示例**: `sdk/examples/example_simple_agent.py`
 
-### 第 2 课 - Trace 模型设计
+### 阶段2 - Trace 模型设计
 
 - 设计 Trace / Span / Event 核心数据结构
 - 为 Agent 每个步骤创建 Span（LLM / Tool / Memory）
@@ -544,7 +544,7 @@ response = client.chat.completions.create(
 - 自动计算耗时、状态、错误信息
 - **实现**: `sdk/agent_insight_sdk/context.py`
 
-### 第 3 课 - SDK 自动埋点（多厂商支持）
+### 阶段3 - SDK 自动埋点（多厂商支持）
 
 - `LLMInterceptor` — 统一拦截器，`wrap(client)` 自动识别 Provider，支持 OpenAI / Anthropic / DeepSeek / vLLM / Ollama 等
 - 基于 Provider Adapter 模式，新增厂商只需实现 `BaseProviderAdapter`
@@ -552,9 +552,9 @@ response = client.chat.completions.create(
 - `ToolSDK` — 装饰器自动记录 Tool 输入/输出/异常/耗时
 - `TraceAPI` — 显式 `startTrace()` / `startSpan()` / `endSpan()` API
 - `AsyncBatchUploader` — 异步批量上报至后端
-- **示例**: `sdk/examples/lesson3_sdk_demo.py`（真实 API 调用 + 多厂商）
+- **示例**: `sdk/examples/example_sdk_demo.py`（真实 API 调用 + 多厂商）
 
-### 第 4 课 - Collector 与存储
+### 阶段4 - Collector 与存储
 
 - FastAPI Collector 服务，接收 5 种 span_type 并进行参数校验
 - Kafka 消息中间件削峰，Consumer 按类型分流写入 5 张 ClickHouse 表
@@ -562,7 +562,7 @@ response = client.chat.completions.create(
 - 提供查询接口：traces / sessions / prompts / tool-calls / metrics / leaderboard
 - **实现**: `backend/app/api/` + `backend/app/kafka/consumer.py` + `backend/app/clickhouse/client.py`
 
-### 第 5 课 - Dashboard 可视化
+### 阶段5 - Dashboard 可视化
 
 - 7 个前端页面，React 18 + TypeScript + Recharts
 - Trace Tree 瀑布图、Timeline 时间线、Prompt Replay
@@ -571,7 +571,7 @@ response = client.chat.completions.create(
 - Session / Agent / 模型 多维度筛选
 - **实现**: `frontend/src/pages/`
 
-### 第 6 课 - 效能分析与排名
+### 阶段6 - 效能分析与排名
 
 - 排行榜 API 三维度：最慢 Tool / Token 消耗 / 失败次数
 - Tool 统计物化视图，自动聚合调用次数、耗时、错误率
@@ -583,12 +583,12 @@ response = client.chat.completions.create(
 
 | 阶段 | 内容 | 状态 |
 |------|------|------|
-| 第 1 课 | AI Agent 与可观测系统概述 | ✅ 完成 |
-| 第 2 课 | Trace 模型设计 | ✅ 完成 |
-| 第 3 课 | SDK 自动埋点 | ✅ 完成 |
-| 第 4 课 | Collector 与存储 | ✅ 完成 |
-| 第 5 课 | Dashboard 可视化 | ✅ 完成 |
-| 第 6 课 | 企业级能力与项目优化 | ✅ 完成 |
+| 阶段1 | AI Agent 与可观测系统概述 | ✅ 完成 |
+| 阶段2 | Trace 模型设计 | ✅ 完成 |
+| 阶段3 | SDK 自动埋点 | ✅ 完成 |
+| 阶段4 | Collector 与存储 | ✅ 完成 |
+| 阶段5 | Dashboard 可视化 | ✅ 完成 |
+| 阶段6 | 企业级能力与项目优化 | ✅ 完成 |
 
 ## License
 

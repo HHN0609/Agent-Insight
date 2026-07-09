@@ -19,7 +19,7 @@ Agent-Insight SDK 完整演示 — 多厂商 LLM + Tool + Trace API
        cd backend && python -m uvicorn app.main:app --port 8000
 
   3. 运行本脚本：
-       cd sdk && pip install -e . && python examples/lesson3_sdk_demo.py
+       cd sdk && pip install -e . && python examples/example_sdk_demo.py
 
   API Key 未配置时自动回退到模拟模式（mock）
 """

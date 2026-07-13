@@ -88,18 +88,20 @@ PARTITION BY toYYYYMM(created_at)
 ORDER BY (created_at, session_id)
 SETTINGS index_granularity = 8192;
 
--- 创建物化视图用于聚合统计（可选优化）
+-- 创建物化视图用于聚合统计
+-- 注意：avg / max 等非加性聚合不能用 SummingMergeTree（合并时会错误累加），
+--       必须使用 AggregatingMergeTree + State/Merge 函数。
 CREATE TABLE IF NOT EXISTS model_stats_daily (
     day Date,
     model_name String,
     total_requests UInt64,
-    avg_prefill_ms Float64,
-    avg_decode_ms Float64,
-    avg_tps Float64,
+    prefill_ms_state AggregateFunction(avg, Float64),
+    decode_ms_state AggregateFunction(avg, Float64),
+    tps_state AggregateFunction(avg, Float64),
     total_input_tokens UInt64,
     total_output_tokens UInt64,
     total_cost_usd Float64
-) ENGINE = SummingMergeTree()
+) ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(day)
 ORDER BY (day, model_name);
 
@@ -109,28 +111,28 @@ SELECT
     toDate(created_at) AS day,
     model_name,
     count() AS total_requests,
-    avg(prefill_ms) AS avg_prefill_ms,
-    avg(decode_ms) AS avg_decode_ms,
-    avg(tps) AS avg_tps,
+    avgState(prefill_ms) AS prefill_ms_state,
+    avgState(decode_ms) AS decode_ms_state,
+    avgState(tps) AS tps_state,
     sum(input_tokens) AS total_input_tokens,
     sum(output_tokens) AS total_output_tokens,
     sum(cost_usd) AS total_cost_usd
 FROM llm_metrics
 GROUP BY day, model_name;
 
--- 6. 工具调用排行榜视图（最慢 Tool）
+-- 6. 工具调用排行榜视图（最慢 Tool / 失败次数）
+-- 使用 AggregatingMergeTree 存储 avg/max 的状态，查询时通过 Merge 函数还原
 CREATE TABLE IF NOT EXISTS tool_stats (
     tool_name String,
     tool_type String,
     total_calls UInt64,
-    avg_duration_ms Float64,
-    max_duration_ms Float64,
+    duration_ms_state AggregateFunction(avg, Float64),
+    duration_ms_max_state AggregateFunction(max, Float64),
     error_count UInt64,
-    error_rate Float64,
     created_at DateTime DEFAULT now()
-) ENGINE = SummingMergeTree()
+) ENGINE = AggregatingMergeTree()
 PARTITION BY toYYYYMM(created_at)
-ORDER BY (tool_name, created_at);
+ORDER BY (tool_name, tool_type);
 
 CREATE MATERIALIZED VIEW IF NOT EXISTS tool_stats_mv
 TO tool_stats AS
@@ -138,10 +140,9 @@ SELECT
     tool_name,
     tool_type,
     count() AS total_calls,
-    avg(duration_ms) AS avg_duration_ms,
-    max(duration_ms) AS max_duration_ms,
+    avgState(duration_ms) AS duration_ms_state,
+    maxState(duration_ms) AS duration_ms_max_state,
     sumIf(1, status = 'error') AS error_count,
-    error_count / total_calls AS error_rate,
     now() AS created_at
 FROM tool_calls
 GROUP BY tool_name, tool_type;

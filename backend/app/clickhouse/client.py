@@ -34,16 +34,20 @@ def get_client() -> SyncClient:
 async def _retry_insert(
     insert_fn, data: List[Dict[str, Any]], label: str, max_retries: int = 3
 ) -> None:
-    """带指数退避重试的 ClickHouse 写入"""
+    """带指数退避重试的 ClickHouse 写入
+
+    注意：insert_fn 必须是 async 函数（内部已通过 run_in_executor 执行同步 IO），
+    不能再放进 run_in_executor，否则 async 函数只会在线程里产生一个
+    未被 await 的 coroutine，数据实际不会写入。
+    """
     if not data:
         return
 
-    loop = asyncio.get_event_loop()
     last_exc = None
 
     for attempt in range(max_retries):
         try:
-            await loop.run_in_executor(None, insert_fn, data)
+            await insert_fn(data)
             return  # 成功
         except ch_errors.Error as e:
             last_exc = e
@@ -299,11 +303,6 @@ async def query_traces(trace_id: Optional[str] = None, limit: int = 100) -> List
 
     def _query():
         client = get_client()
-        if trace_id:
-            query = f"SELECT * FROM agent_traces WHERE trace_id = '{trace_id}' ORDER BY start_time"
-        else:
-            query = f"SELECT * FROM agent_traces ORDER BY start_time DESC LIMIT {limit}"
-        result = client.execute(query)
         columns = [
             "trace_id",
             "span_id",
@@ -315,6 +314,19 @@ async def query_traces(trace_id: Optional[str] = None, limit: int = 100) -> List
             "attributes",
             "created_at",
         ]
+        col_sql = ", ".join(columns)
+        if trace_id:
+            result = client.execute(
+                f"SELECT {col_sql} FROM agent_traces "
+                "WHERE trace_id = %(tid)s ORDER BY start_time",
+                {"tid": trace_id},
+            )
+        else:
+            result = client.execute(
+                f"SELECT {col_sql} FROM agent_traces "
+                "ORDER BY start_time DESC LIMIT %(lim)s",
+                {"lim": limit},
+            )
         return [dict(zip(columns, row)) for row in result]
 
     try:
@@ -330,11 +342,6 @@ async def query_prompts(trace_id: Optional[str] = None, limit: int = 100) -> Lis
 
     def _query():
         client = get_client()
-        if trace_id:
-            query = f"SELECT * FROM prompt_logs WHERE trace_id = '{trace_id}' ORDER BY created_at"
-        else:
-            query = f"SELECT * FROM prompt_logs ORDER BY created_at DESC LIMIT {limit}"
-        result = client.execute(query)
         columns = [
             "trace_id",
             "span_id",
@@ -349,6 +356,19 @@ async def query_prompts(trace_id: Optional[str] = None, limit: int = 100) -> Lis
             "error",
             "created_at",
         ]
+        col_sql = ", ".join(columns)
+        if trace_id:
+            result = client.execute(
+                f"SELECT {col_sql} FROM prompt_logs "
+                "WHERE trace_id = %(tid)s ORDER BY created_at",
+                {"tid": trace_id},
+            )
+        else:
+            result = client.execute(
+                f"SELECT {col_sql} FROM prompt_logs "
+                "ORDER BY created_at DESC LIMIT %(lim)s",
+                {"lim": limit},
+            )
         return [dict(zip(columns, row)) for row in result]
 
     try:
@@ -364,11 +384,6 @@ async def query_tool_calls(trace_id: Optional[str] = None, limit: int = 100) -> 
 
     def _query():
         client = get_client()
-        if trace_id:
-            query = f"SELECT * FROM tool_calls WHERE trace_id = '{trace_id}' ORDER BY created_at"
-        else:
-            query = f"SELECT * FROM tool_calls ORDER BY created_at DESC LIMIT {limit}"
-        result = client.execute(query)
         columns = [
             "trace_id",
             "span_id",
@@ -381,6 +396,19 @@ async def query_tool_calls(trace_id: Optional[str] = None, limit: int = 100) -> 
             "error",
             "created_at",
         ]
+        col_sql = ", ".join(columns)
+        if trace_id:
+            result = client.execute(
+                f"SELECT {col_sql} FROM tool_calls "
+                "WHERE trace_id = %(tid)s ORDER BY created_at",
+                {"tid": trace_id},
+            )
+        else:
+            result = client.execute(
+                f"SELECT {col_sql} FROM tool_calls "
+                "ORDER BY created_at DESC LIMIT %(lim)s",
+                {"lim": limit},
+            )
         return [dict(zip(columns, row)) for row in result]
 
     try:
@@ -396,11 +424,6 @@ async def query_sessions(limit: int = 100, agent_name: Optional[str] = None) -> 
 
     def _query():
         client = get_client()
-        if agent_name:
-            query = f"SELECT * FROM sessions WHERE agent_name = '{agent_name}' ORDER BY created_at DESC LIMIT {limit}"
-        else:
-            query = f"SELECT * FROM sessions ORDER BY created_at DESC LIMIT {limit}"
-        result = client.execute(query)
         columns = [
             "session_id",
             "trace_id",
@@ -414,6 +437,19 @@ async def query_sessions(limit: int = 100, agent_name: Optional[str] = None) -> 
             "status",
             "created_at",
         ]
+        col_sql = ", ".join(columns)
+        if agent_name:
+            result = client.execute(
+                f"SELECT {col_sql} FROM sessions "
+                "WHERE agent_name = %(an)s ORDER BY created_at DESC LIMIT %(lim)s",
+                {"an": agent_name, "lim": limit},
+            )
+        else:
+            result = client.execute(
+                f"SELECT {col_sql} FROM sessions "
+                "ORDER BY created_at DESC LIMIT %(lim)s",
+                {"lim": limit},
+            )
         return [dict(zip(columns, row)) for row in result]
 
     try:
@@ -427,17 +463,27 @@ async def query_metrics_compare(
     model_names: Optional[List[str]] = None,
     hours: int = 24,
 ) -> List[Dict[str, Any]]:
-    """查询多模型效能对比数据"""
+    """查询多模型效能对比数据
+
+    hours 参数用于限定查询时间范围（最近 N 小时），避免全表扫描。
+    """
     loop = asyncio.get_event_loop()
 
     def _query():
         client = get_client()
 
+        # 始终按 created_at 限定时间窗口，避免全表扫描
+        conditions = ["created_at >= now() - INTERVAL %(hours)s HOUR"]
+        params: Dict[str, Any] = {"hours": hours}
+
         if model_names:
-            model_filter = " OR ".join([f"model_name = '{m}'" for m in model_names])
-            where_clause = f"WHERE ({model_filter})"
-        else:
-            where_clause = ""
+            # 使用 IN + 参数化，避免 SQL 注入
+            placeholders = ", ".join([f"%(m{i})s" for i in range(len(model_names))])
+            conditions.append(f"model_name IN ({placeholders})")
+            for i, m in enumerate(model_names):
+                params[f"m{i}"] = m
+
+        where_clause = "WHERE " + " AND ".join(conditions)
 
         query = f"""
             SELECT
@@ -454,7 +500,7 @@ async def query_metrics_compare(
             GROUP BY model_name
             ORDER BY total_requests DESC
         """
-        result = client.execute(query)
+        result = client.execute(query, params)
         columns = [
             "model_name",
             "total_requests",
@@ -482,6 +528,9 @@ async def query_leaderboard(
     查询排行榜
 
     metric: slowest_tool | most_tokens | most_failed
+
+    注意：tool_stats 使用 AggregatingMergeTree，avg/max 以 State 形式存储，
+          查询时必须 GROUP BY 并用 avgMerge / maxMerge 还原。
     """
     loop = asyncio.get_event_loop()
 
@@ -489,42 +538,59 @@ async def query_leaderboard(
         client = get_client()
 
         if metric == "slowest_tool":
-            query = f"""
-                SELECT tool_name, tool_type, total_calls,
-                       avg_duration_ms, max_duration_ms, error_count, error_rate
+            query = """
+                SELECT
+                    tool_name,
+                    tool_type,
+                    sum(total_calls) AS total_calls,
+                    avgMerge(duration_ms_state) AS avg_duration_ms,
+                    maxMerge(duration_ms_max_state) AS max_duration_ms,
+                    sum(error_count) AS error_count,
+                    sum(error_count) / sum(total_calls) AS error_rate
                 FROM tool_stats
+                GROUP BY tool_name, tool_type
                 ORDER BY avg_duration_ms DESC
-                LIMIT {limit}
+                LIMIT %(lim)s
             """
+            params = {"lim": limit}
             columns = [
                 "tool_name", "tool_type", "total_calls",
                 "avg_duration_ms", "max_duration_ms", "error_count", "error_rate",
             ]
         elif metric == "most_tokens":
-            query = f"""
-                SELECT model_name,
-                       sum(input_tokens) as total_input,
-                       sum(output_tokens) as total_output,
-                       sum(input_tokens) + sum(output_tokens) as total_tokens,
-                       count() as request_count
+            query = """
+                SELECT
+                    model_name,
+                    sum(input_tokens) AS total_input,
+                    sum(output_tokens) AS total_output,
+                    sum(input_tokens) + sum(output_tokens) AS total_tokens,
+                    count() AS request_count
                 FROM llm_metrics
                 GROUP BY model_name
                 ORDER BY total_tokens DESC
-                LIMIT {limit}
+                LIMIT %(lim)s
             """
+            params = {"lim": limit}
             columns = [
                 "model_name", "total_input", "total_output",
                 "total_tokens", "request_count",
             ]
         elif metric == "most_failed":
-            query = f"""
-                SELECT tool_name, tool_type, total_calls, error_count,
-                       error_rate, avg_duration_ms
+            query = """
+                SELECT
+                    tool_name,
+                    tool_type,
+                    sum(total_calls) AS total_calls,
+                    sum(error_count) AS error_count,
+                    sum(error_count) / sum(total_calls) AS error_rate,
+                    avgMerge(duration_ms_state) AS avg_duration_ms
                 FROM tool_stats
-                WHERE error_count > 0
+                GROUP BY tool_name, tool_type
+                HAVING error_count > 0
                 ORDER BY error_count DESC
-                LIMIT {limit}
+                LIMIT %(lim)s
             """
+            params = {"lim": limit}
             columns = [
                 "tool_name", "tool_type", "total_calls",
                 "error_count", "error_rate", "avg_duration_ms",
@@ -532,7 +598,7 @@ async def query_leaderboard(
         else:
             return []
 
-        result = client.execute(query)
+        result = client.execute(query, params)
         return [dict(zip(columns, row)) for row in result]
 
     try:

@@ -7,7 +7,7 @@ import json
 import logging
 from dataclasses import asdict, dataclass
 from datetime import datetime
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
 
 import httpx
 
@@ -137,6 +137,8 @@ class AsyncBatchUploader:
         self._task: Optional[asyncio.Task] = None
         self._client: Optional[httpx.AsyncClient] = None
         self._logger = logging.getLogger(__name__)
+        # span 提交观察者，用于 SessionSDK 等模块本地聚合
+        self._observers: List[Optional[Callable[[Dict[str, Any]], None]]] = []
         # 统计
         self._dropped = 0
         self._sent = 0
@@ -175,8 +177,9 @@ class AsyncBatchUploader:
 
     async def submit(self, span: SpanData) -> None:
         """提交 span 数据到队列（非阻塞，队列满时丢弃并告警）"""
+        span_dict = span.to_dict()
         try:
-            self._queue.put_nowait(span.to_dict())
+            self._queue.put_nowait(span_dict)
         except asyncio.QueueFull:
             self._dropped += 1
             if self._dropped % 100 == 1:
@@ -184,6 +187,25 @@ class AsyncBatchUploader:
                     f"Uploader queue full (capacity={self.QUEUE_MAXSIZE}), "
                     f"dropped={self._dropped}. Consider increasing batch_size or flush_interval."
                 )
+
+        # 同步通知观察者，失败不影响主流程
+        for observer in self._observers:
+            if observer is None:
+                continue
+            try:
+                observer(span_dict)
+            except Exception:
+                self._logger.exception("Span observer failed")
+
+    def add_observer(self, callback: Callable[[Dict[str, Any]], None]) -> int:
+        """注册一个 span 提交观察者，返回 observer_id 用于移除"""
+        self._observers.append(callback)
+        return len(self._observers) - 1
+
+    def remove_observer(self, observer_id: int) -> None:
+        """移除指定观察者"""
+        if 0 <= observer_id < len(self._observers):
+            self._observers[observer_id] = None
 
     @property
     def stats(self) -> Dict[str, int]:

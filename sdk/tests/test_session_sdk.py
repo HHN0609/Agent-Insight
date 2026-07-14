@@ -5,7 +5,6 @@ SessionSDK 单元测试
 """
 
 import asyncio
-from typing import Any, Dict, List
 
 import pytest
 
@@ -13,41 +12,9 @@ from agent_insight_sdk import SessionSDK, TraceAPI, clear_current_context, get_c
 from agent_insight_sdk.uploader import SpanData
 
 
-class _FakeUploader:
-    """模拟上报器，同步调用观察者"""
-
-    def __init__(self):
-        self.spans: List[Dict[str, Any]] = []
-        self._observers: List[Any] = []
-
-    async def submit(self, span: SpanData) -> None:
-        d = span.to_dict()
-        self.spans.append(d)
-        for obs in self._observers:
-            if obs:
-                obs(d)
-
-    def add_observer(self, callback):
-        self._observers.append(callback)
-        return len(self._observers) - 1
-
-    def remove_observer(self, observer_id: int) -> None:
-        if 0 <= observer_id < len(self._observers):
-            self._observers[observer_id] = None
-
-
-@pytest.fixture
-def uploader():
-    return _FakeUploader()
-
-
-@pytest.fixture
-def session_sdk(uploader):
-    return SessionSDK(uploader)
-
-
 @pytest.mark.asyncio
-async def test_start_session_sets_context(uploader, session_sdk):
+async def test_start_session_sets_context(fake_uploader):
+    session_sdk = SessionSDK(fake_uploader)
     sess = session_sdk.start_session(name="test", agent_name="a", user_input="hi")
 
     assert sess.session_id is not None
@@ -59,12 +26,13 @@ async def test_start_session_sets_context(uploader, session_sdk):
 
 
 @pytest.mark.asyncio
-async def test_session_aggregation(uploader, session_sdk):
-    trace = TraceAPI(uploader)
+async def test_session_aggregation(fake_uploader):
+    trace = TraceAPI(fake_uploader)
+    session_sdk = SessionSDK(fake_uploader)
     sess = session_sdk.start_session(name="test", agent_name="a", user_input="hi")
 
     # tool span
-    await uploader.submit(
+    await fake_uploader.submit(
         SpanData(
             trace_id=sess.session_id,
             span_id="span-tool",
@@ -76,7 +44,7 @@ async def test_session_aggregation(uploader, session_sdk):
     )
 
     # llm metrics span
-    await uploader.submit(
+    await fake_uploader.submit(
         SpanData(
             trace_id=sess.session_id,
             span_id="span-llm",
@@ -95,7 +63,7 @@ async def test_session_aggregation(uploader, session_sdk):
     session_sdk.end_session(sess, final_response="done", status="completed")
     await asyncio.sleep(0.05)
 
-    session_spans = [s for s in uploader.spans if s["span_type"] == "session"]
+    session_spans = [s for s in fake_uploader.spans if s["span_type"] == "session"]
     assert len(session_spans) == 1
     s = session_spans[0]
 
@@ -116,15 +84,15 @@ async def test_session_aggregation(uploader, session_sdk):
 
 
 @pytest.mark.asyncio
-async def test_session_context_manager(uploader):
-    session_sdk = SessionSDK(uploader)
+async def test_session_context_manager(fake_uploader):
+    session_sdk = SessionSDK(fake_uploader)
 
     with session_sdk.session(name="cm", agent_name="agent") as sess:
         assert get_current_context().trace_id == sess.session_id
 
     await asyncio.sleep(0.05)
 
-    session_spans = [s for s in uploader.spans if s["span_type"] == "session"]
+    session_spans = [s for s in fake_uploader.spans if s["span_type"] == "session"]
     assert len(session_spans) == 1
     assert session_spans[0]["total_spans"] == 0
 
@@ -133,14 +101,14 @@ async def test_session_context_manager(uploader):
 
 
 @pytest.mark.asyncio
-async def test_custom_pricing(uploader):
+async def test_custom_pricing(fake_uploader):
     session_sdk = SessionSDK(
-        uploader,
+        fake_uploader,
         pricing={"my-model": {"input": 1.0, "output": 2.0}},
     )
     sess = session_sdk.start_session(name="test")
 
-    await uploader.submit(
+    await fake_uploader.submit(
         SpanData(
             trace_id=sess.session_id,
             span_id="span-llm",
@@ -159,7 +127,7 @@ async def test_custom_pricing(uploader):
     session_sdk.end_session(sess)
     await asyncio.sleep(0.05)
 
-    s = [s for s in uploader.spans if s["span_type"] == "session"][0]
+    s = [s for s in fake_uploader.spans if s["span_type"] == "session"][0]
     assert abs(s["total_cost_usd"] - (1.0 + 1.0)) < 1e-9
 
     session_sdk.close()

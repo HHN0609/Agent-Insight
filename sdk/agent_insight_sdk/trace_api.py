@@ -21,7 +21,7 @@ Trace API 模块 - 提供 startTrace/startSpan/endSpan 等显式 API
 import asyncio
 import time
 from datetime import datetime
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 
 from .context import TraceContext, get_current_context, set_current_context, clear_current_context
 from .uploader import AsyncBatchUploader, SpanData
@@ -34,6 +34,8 @@ class TraceAPI:
         self._uploader = uploader
         # 记录每个 span 的开始时间
         self._span_start_times: Dict[str, datetime] = {}
+        # 维护通过本 API 创建的 context 栈，便于 end_span/end_trace 恢复父上下文
+        self._context_stack: List[TraceContext] = []
 
     def start_trace(self, name: str, trace_id: str = "") -> TraceContext:
         """
@@ -44,6 +46,7 @@ class TraceAPI:
             ctx = api.start_trace("user_query_123")
         """
         ctx = TraceContext(name=name, trace_id=trace_id or None)
+        self._context_stack = [ctx]
         set_current_context(ctx)
         self._span_start_times[ctx.span_id] = datetime.utcnow()
         return ctx
@@ -61,6 +64,7 @@ class TraceAPI:
         else:
             ctx = TraceContext(name=name)
 
+        self._context_stack.append(ctx)
         set_current_context(ctx)
         self._span_start_times[ctx.span_id] = datetime.utcnow()
         return ctx
@@ -77,8 +81,8 @@ class TraceAPI:
         用法：
             api.end_span(span_ctx, attributes={"status": "success"})
         """
-        if ctx is None:
-            ctx = get_current_context()
+        if ctx is None and self._context_stack:
+            ctx = self._context_stack[-1]
 
         if ctx is None:
             return
@@ -99,6 +103,14 @@ class TraceAPI:
 
         self._submit_span(span)
 
+        # 如果结束的是栈顶 span，恢复父上下文
+        if self._context_stack and self._context_stack[-1] is ctx:
+            self._context_stack.pop()
+            if self._context_stack:
+                set_current_context(self._context_stack[-1])
+            else:
+                clear_current_context()
+
     def end_trace(self, attributes: Dict[str, Any] = None) -> None:
         """
         结束当前 Trace（结束根 span 并清除上下文）
@@ -106,10 +118,13 @@ class TraceAPI:
         用法：
             api.end_trace(attributes={"status": "completed"})
         """
-        ctx = get_current_context()
-        if ctx:
-            self.end_span(ctx, attributes, span_type="trace")
-            clear_current_context()
+        if not self._context_stack:
+            return
+
+        root = self._context_stack[0]
+        self.end_span(root, attributes, span_type="trace")
+        self._context_stack.clear()
+        clear_current_context()
 
     def _submit_span(self, span: SpanData) -> None:
         """提交 span 到上报器"""

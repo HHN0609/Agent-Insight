@@ -80,7 +80,8 @@ async def test_uploader_batch_flush():
 async def test_uploader_retry_and_drop():
     uploader = AsyncBatchUploader(backend_url="http://localhost:9999", batch_size=1, flush_interval=60)
 
-    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post:
+    with patch("httpx.AsyncClient.post", new_callable=AsyncMock) as mock_post, \
+         patch("asyncio.sleep", new_callable=AsyncMock) as mock_sleep:
         mock_post.return_value.status_code = 500
         await uploader.start()
 
@@ -95,8 +96,8 @@ async def test_uploader_retry_and_drop():
             )
         )
 
-        # 等待重试完成
-        await asyncio.sleep(8)
+        # mock sleep 后重试瞬间完成
+        await asyncio.sleep(0.1)
         await uploader.stop()
 
         # 最多重试 3 次
@@ -125,4 +126,64 @@ async def test_uploader_remove_observer():
     )
 
     assert len(observed) == 0
+    await uploader.stop()
+
+
+@pytest.mark.asyncio
+async def test_uploader_queue_full_backpressure():
+    """队列满时 submit 应丢弃并增加 dropped 计数"""
+    # queue_maxsize 固定为 10000，用未 start 的 uploader 避免 drain
+    uploader = AsyncBatchUploader(backend_url="http://localhost:9999", batch_size=100, flush_interval=60)
+    # 手动塞满队列
+    for i in range(uploader.QUEUE_MAXSIZE):
+        uploader._queue.put_nowait({"idx": i})
+
+    assert uploader.stats["dropped"] == 0
+
+    # 再 submit 一条应触发 QueueFull
+    await uploader.submit(
+        SpanData(
+            trace_id="overflow",
+            span_id="overflow",
+            name="overflow",
+            span_type="trace",
+        )
+    )
+
+    assert uploader.stats["dropped"] == 1
+
+
+@pytest.mark.asyncio
+async def test_uploader_observer_exception_isolation():
+    """observer 抛异常不应影响 submit 主流程和后续 observer"""
+    uploader = AsyncBatchUploader(backend_url="http://localhost:9999", batch_size=10, flush_interval=60)
+    await uploader.start()
+
+    good_observed = []
+
+    def bad_observer(d):
+        raise RuntimeError("observer crashed")
+
+    def good_observer(d):
+        good_observed.append(d["span_type"])
+
+    uploader.add_observer(bad_observer)
+    uploader.add_observer(good_observer)
+
+    # submit 不应抛异常
+    await uploader.submit(
+        SpanData(
+            trace_id="t1",
+            span_id="s1",
+            name="test",
+            start_time="2026-01-01T00:00:00",
+            end_time="2026-01-01T00:00:01",
+            span_type="trace",
+        )
+    )
+
+    # 第二个 observer 仍然被调用
+    assert good_observed == ["trace"]
+    assert uploader.stats["queue_size"] == 1
+
     await uploader.stop()

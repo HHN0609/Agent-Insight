@@ -6,7 +6,7 @@ Agent-Insight SDK 完整演示 — 多厂商 LLM + Tool + Trace API
   2. OpenAI / Anthropic / DeepSeek / Ollama 多厂商示例
   3. ToolSDK 装饰器自动埋点
   4. TraceAPI 显式链路控制
-  5. Session 完整生命周期上报
+  5. SessionSDK 自动聚合 Session 生命周期
 
 用法：
   1. 先在项目根目录创建 .env 文件，填入 API Key：
@@ -41,6 +41,7 @@ from agent_insight_sdk import (
     TraceContext,
     LLMInterceptor,
     StreamMonitor,
+    SessionSDK,
     ToolSDK,
     TraceAPI,
     AsyncBatchUploader,
@@ -279,52 +280,62 @@ async def demo_trace_api():
 # ===================================================================
 
 async def demo_session_lifecycle():
-    """演示6：Session 完整生命周期上报"""
+    """演示6：Session 完整生命周期自动聚合上报"""
     print("\n" + "=" * 60)
-    print("演示6: Session 完整生命周期")
+    print("演示6: Session 完整生命周期（SessionSDK）")
     print("=" * 60)
 
     uploader = AsyncBatchUploader(backend_url=BACKEND_URL, batch_size=5)
     await uploader.start()
 
+    session_sdk = SessionSDK(uploader)
     trace = TraceAPI(uploader)
 
-    ctx = trace.start_trace(name="user_session_demo")
-    session_id = ctx.trace_id
+    # 显式开始 Session
+    sess = session_sdk.start_session(
+        name="user_session_demo",
+        agent_name="demo-agent",
+        user_input="演示用户输入",
+    )
 
     # 模拟 3 轮对话
     for round_num in range(3):
         span = trace.start_span(
             name=f"round_{round_num + 1}",
-            attributes={"round": round_num + 1, "session_id": session_id}
+            attributes={"round": round_num + 1, "session_id": sess.session_id},
         )
         time.sleep(0.15)
         trace.end_span(span)
 
-    trace.end_span(ctx)
+    # 再模拟一次 LLM 调用，验证 token / 成本自动聚合
+    llm_span = trace.start_span(name="llm_summary", attributes={"model": "gpt-4o-mini"})
+    metrics_span = SpanData(
+        trace_id=sess.session_id,
+        span_id=llm_span.span_id,
+        parent_span_id=llm_span.parent_span_id,
+        name="llm_metrics",
+        start_time=datetime.utcnow().isoformat(),
+        end_time=datetime.utcnow().isoformat(),
+        span_type="llm_metrics",
+        attributes={
+            "model_name": "gpt-4o-mini",
+            "prefill_ms": 100.0,
+            "decode_ms": 200.0,
+            "input_tokens": 1000,
+            "output_tokens": 500,
+            "tps": 2500.0,
+        },
+    )
+    await uploader.submit(metrics_span)
+    trace.end_span(llm_span)
 
-    # 上报 Session 汇总
-    from agent_insight_sdk.uploader import SpanData
-    session_span = SpanData(
-        trace_id=ctx.trace_id,
-        span_id=ctx.trace_id,
-        session_id=session_id,
-        name="session",
-        start_time="",
-        end_time="",
-        span_type="session",
-        agent_name="demo-agent",
-        user_input="演示用户输入",
+    # 结束 Session，自动聚合 span 数 / token / 成本 / 耗时
+    session_sdk.end_session(
+        sess,
         final_response="演示最终响应",
-        total_spans=4,
-        total_tokens=500,
-        total_cost_usd=0.015,
-        duration_ms=1500.0,
         status="completed",
     )
-    await uploader.submit(session_span)
 
-    clear_current_context()
     await asyncio.sleep(0.5)
     await uploader.stop()
     print("✅ 完成")

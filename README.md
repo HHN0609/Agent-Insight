@@ -16,7 +16,7 @@
 │  ┌────────────────────────▼─────────────────────────────────────────┐  │
 │  │  Agent Insight SDK (非侵入式拦截)                                 │  │
 │  │  - TraceContext 上下文传递 (contextvars)                         │  │
-│  │  - OpenAIInterceptor LLM 调用拦截                                │  │
+│  │  - LLMInterceptor 多厂商调用拦截                                │  │
 │  │  - StreamMonitor 流式响应监控 (prefill/decode/TPS)               │  │
 │  │  - ToolSDK 装饰器自动埋点                                        │  │
 │  │  - TraceAPI 显式 startTrace/startSpan/endSpan                    │  │
@@ -70,7 +70,7 @@
 | **探针 SDK** | Python 3.10+ | 多厂商 LLM 拦截（Provider Adapter 模式），contextvars 上下文传递 |
 | **后端服务** | FastAPI | 异步框架，高并发 Ingestion |
 | **消息中间件** | Kafka (KRaft) | 单机 Docker 版，高并发削峰，无需 Zookeeper |
-| **数据存储** | ClickHouse | 列式数据库，6 张表 + 2 个物化视图 |
+| **数据存储** | ClickHouse | 列式数据库，5 张业务表 + 2 张聚合表 + 2 个物化视图 |
 | **前端展示** | React 18 + TypeScript | Vite 构建，Recharts 图表，React Router v6 |
 | **容器化** | Docker Compose | 一键启动 Kafka + ClickHouse |
 
@@ -81,15 +81,16 @@ agent-observability/
 ├── docker-compose.yml              # Docker 编排 (Kafka + ClickHouse)
 ├── docker/
 │   └── clickhouse/
-│       └── init.sql                # ClickHouse 初始化 (6 表 + 2 物化视图)
+│       └── init.sql                # ClickHouse 初始化 (5 业务表 + 2 聚合表 + 2 物化视图)
 │
 ├── sdk/                            # Python 探针 SDK
 │   ├── agent_insight_sdk/
-│   │   ├── __init__.py             # 模块入口 (8 个公开 API)
+│   │   ├── __init__.py             # 模块入口 (15 个公开 API)
 │   │   ├── context.py              # TraceContext 上下文管理 (contextvars)
-│   │   ├── interceptor.py          # [兼容保留] 原 OpenAIInterceptor
+│   │   ├── interceptor.py          # [兼容保留] 原 OpenAIInterceptor (已别名到 LLMInterceptor)
 │   │   ├── stream_monitor.py       # StreamMonitor 流式响应监控
-│   │   ├── tool_sdk.py             # ToolSDK 装饰器自动埋点
+│   │   ├── session_sdk.py          # SessionSDK 会话生命周期自动聚合
+│   │   ├── tool_sdk.py             # ToolSDK 装饰器 (通用 / MCP / RAG)
 │   │   ├── trace_api.py            # TraceAPI 显式 startTrace/startSpan/endSpan
 │   │   ├── uploader.py             # AsyncBatchUploader + SpanData（5 种 span_type）
 │   │   └── providers/              # Provider Adapter 模式（多厂商 LLM 拦截）
@@ -100,7 +101,16 @@ agent-observability/
 │   │   ├── example_simple_agent.py # 阶段1：无埋点简单 Agent 示例
 │   │   └── example_sdk_demo.py     # 阶段3：SDK 完整功能示例
 │   ├── tests/
-│   │   └── test_agent_simulation.py
+│   │   ├── test_context.py         # TraceContext 单测
+│   │   ├── test_providers.py       # Provider Adapter 单测
+│   │   ├── test_session_sdk.py     # SessionSDK 单测
+│   │   ├── test_stream_monitor.py  # StreamMonitor 单测
+│   │   ├── test_tool_sdk.py        # ToolSDK 单测
+│   │   ├── test_trace_api.py       # TraceAPI 单测
+│   │   ├── test_uploader.py        # Uploader 单测
+│   │   ├── test_span_data.py       # SpanData 序列化单测
+│   │   ├── test_integration.py     # 集成测试
+│   │   └── test_agent_simulation.py # 模拟 Agent 全链路测试
 │   ├── setup.py
 │   └── SDK_USAGE.md                # SDK 完整使用文档
 │
@@ -196,19 +206,21 @@ curl http://localhost:8123/ping
 curl http://localhost:8123/?query=SHOW+TABLES
 ```
 
-预期输出应包含 6 张表：
+预期输出应包含 7 张表 + 2 个物化视图：
 
 ```
 agent_traces
 llm_metrics
 model_stats_daily
+model_stats_daily_mv
 prompt_logs
 sessions
 tool_calls
 tool_stats
+tool_stats_mv
 ```
 
-> 所有表由 `docker/clickhouse/init.sql` 在容器首次启动时自动创建。如果未显示，请检查 Docker 日志：`docker logs agent-insight-clickhouse`
+> 所有表和物化视图由 `docker/clickhouse/init.sql` 在容器首次启动时自动创建。如果未显示，请检查 Docker 日志：`docker logs agent-insight-clickhouse`
 
 #### 1.4 验证 Kafka
 
@@ -239,7 +251,7 @@ pip install -e .
 #### 2.1 验证安装
 
 ```bash
-python -c "from agent_insight_sdk import TraceContext, ToolSDK, TraceAPI, AsyncBatchUploader; print('SDK OK')"
+python -c "from agent_insight_sdk import TraceContext, LLMInterceptor, ToolSDK, TraceAPI, SessionSDK, AsyncBatchUploader; print('SDK OK')"
 ```
 
 预期输出：`SDK OK`
@@ -377,9 +389,10 @@ python examples/example_sdk_demo.py
 
 观察输出中的 span 上报日志。该脚本会：
 
-1. 演示 `OpenAIInterceptor` LLM 调用自动拦截
+1. 演示 `LLMInterceptor` 多厂商 LLM 调用自动拦截（OpenAI / Anthropic / DeepSeek）
 2. 演示 `ToolSDK` 装饰器自动埋点 Tool 调用
 3. 演示 `TraceAPI` 显式 startTrace/startSpan/endSpan
+4. 演示 `SessionSDK` 自动聚合 Session 生命周期
 
 #### 5.3 模拟测试（发送模拟数据）
 
@@ -443,7 +456,7 @@ docker-compose down
 
 ## 数据库设计
 
-ClickHouse 包含 6 张业务表 + 2 个物化视图：
+ClickHouse 包含 5 张业务表 + 2 张聚合表 + 2 个物化视图：
 
 | 表名 | 说明 | Engine |
 |------|------|--------|
@@ -452,8 +465,10 @@ ClickHouse 包含 6 张业务表 + 2 个物化视图：
 | `prompt_logs` | Prompt/Response 记录 | MergeTree |
 | `tool_calls` | Tool 调用记录 | MergeTree |
 | `sessions` | Agent Session 会话 | MergeTree |
-| `model_stats_daily` | 模型按日聚合统计（物化视图） | SummingMergeTree |
-| `tool_stats` | Tool 调用聚合统计（物化视图） | SummingMergeTree |
+| `model_stats_daily` | 模型按日聚合统计表（由 `model_stats_daily_mv` 物化视图写入） | AggregatingMergeTree |
+| `tool_stats` | Tool 调用聚合统计表（由 `tool_stats_mv` 物化视图写入） | AggregatingMergeTree |
+
+> `model_stats_daily` 和 `tool_stats` 使用 `AggregatingMergeTree` 配合 `avgState` / `maxState` 聚合函数状态存储，查询时通过 `avgMerge` / `maxMerge` 还原。avg / max 等非加性聚合不能用 SummingMergeTree（合并时会错误累加）。
 
 ## SDK 核心能力
 
@@ -462,8 +477,9 @@ from agent_insight_sdk import (
     TraceContext,          # 上下文管理
     LLMInterceptor,        # 多厂商 LLM 统一拦截（自动识别 provider）
     StreamMonitor,         # 流式响应监控
-    ToolSDK,               # Tool 自动埋点
+    ToolSDK,               # Tool 自动埋点（通用 / MCP / RAG）
     TraceAPI,              # 显式 Trace API
+    SessionSDK,            # Session 生命周期自动聚合
     AsyncBatchUploader,    # 异步批量上报
 )
 ```
@@ -479,6 +495,7 @@ SDK 内置 Provider Adapter 模式，同一套 `LLMInterceptor.wrap(client)` API
 | **vLLM** | `pip install openai` | OpenAI 兼容 | `OpenAICompatibleAdapter` |
 | **Ollama** | `pip install openai` | OpenAI 兼容 | `OpenAICompatibleAdapter` |
 | **Groq** | `pip install openai` | OpenAI 兼容 | `OpenAICompatibleAdapter` |
+| **Together AI** | `pip install openai` | OpenAI 兼容 | `OpenAICompatibleAdapter` |
 | **Anthropic** | `pip install anthropic` | Anthropic 专有 | `AnthropicAdapter` |
 | **自定义** | 任意 | 任意 | 实现 `BaseProviderAdapter` |
 
@@ -509,9 +526,10 @@ response = client.chat.completions.create(
 | `TraceContext` | 基于 contextvars 的异步安全上下文，自动维护 trace_id / span_id / parent_span_id |
 | `LLMInterceptor` | 多厂商 LLM 统一拦截器，`wrap(client)` 自动识别 Provider 并拦截所有 LLM 调用 |
 | `StreamMonitor` | 监控流式响应的 chunk，精确计算 prefill_ms（首字耗时）和 decode_ms（生成耗时） |
-| `ToolSDK` | `@tool_sdk.instrument()` 装饰器，自动记录 Tool 输入/输出/耗时/异常 |
+| `ToolSDK` | 三种装饰器：`@instrument()`（通用）/ `@instrument_mcp()`（MCP 协议）/ `@instrument_rag()`（RAG 检索），自动记录 Tool 输入/输出/耗时/异常 |
 | `TraceAPI` | 显式 `startTrace()` / `startSpan()` / `endSpan()` API，适用于手动控制链路场景 |
-| `AsyncBatchUploader` | 内存队列 + 后台任务，每 500ms 或满 20 条自动批量上报至后端 |
+| `SessionSDK` | 自动聚合一次会话的总 Span 数 / 总 Token 数 / 总成本 / 总耗时，结束时上报 session span |
+| `AsyncBatchUploader` | 有界队列（10000）+ 后台任务，每 500ms 或满 20 条自动批量上报，3 次指数退避重试 |
 
 ## 前端页面
 
@@ -546,19 +564,20 @@ response = client.chat.completions.create(
 
 ### 阶段3 - SDK 自动埋点（多厂商支持）
 
-- `LLMInterceptor` — 统一拦截器，`wrap(client)` 自动识别 Provider，支持 OpenAI / Anthropic / DeepSeek / vLLM / Ollama 等
-- 基于 Provider Adapter 模式，新增厂商只需实现 `BaseProviderAdapter`
+- `LLMInterceptor` — 统一拦截器，`wrap(client)` 自动识别 Provider，支持 OpenAI / Anthropic / DeepSeek / vLLM / Ollama / Groq / Together AI
+- 基于 Provider Adapter 模式，新增厂商只需继承 `BaseProviderAdapter` 并实现 `supports()` / `_wrap_call()` / `_unwrap_client()`
 - `StreamMonitor` — 流式响应监控，精确计算 prefill_ms / decode_ms / TPS
-- `ToolSDK` — 装饰器自动记录 Tool 输入/输出/异常/耗时
+- `ToolSDK` — 三种装饰器：`@instrument()`（通用）/ `@instrument_mcp()`（MCP）/ `@instrument_rag()`（RAG），自动记录 Tool 输入/输出/异常/耗时
 - `TraceAPI` — 显式 `startTrace()` / `startSpan()` / `endSpan()` API
-- `AsyncBatchUploader` — 异步批量上报至后端
+- `SessionSDK` — 自动聚合一次会话的总 Span / Token / 成本 / 耗时
+- `AsyncBatchUploader` — 有界队列 + 异步批量上报至后端，3 次指数退避重试
 - **示例**: `sdk/examples/example_sdk_demo.py`（真实 API 调用 + 多厂商）
 
 ### 阶段4 - Collector 与存储
 
 - FastAPI Collector 服务，接收 5 种 span_type 并进行参数校验
 - Kafka 消息中间件削峰，Consumer 按类型分流写入 5 张 ClickHouse 表
-- 6 张业务表 + 2 个物化视图
+- 5 张业务表 + 2 张聚合表 + 2 个物化视图
 - 提供查询接口：traces / sessions / prompts / tool-calls / metrics / leaderboard
 - **实现**: `backend/app/api/` + `backend/app/kafka/consumer.py` + `backend/app/clickhouse/client.py`
 

@@ -102,14 +102,28 @@ function PromptReplay() {
             {toolCalls.length === 0 ? (
               <div className="loading">暂无 Tool 调用记录</div>
             ) : (
-              toolCalls.map((tc, idx) => (
+              toolCalls.map((tc, idx) => {
+                const attrs = parseToolAttrs(tc.attributes)
+                return (
                 <div className="tool-card" key={idx}>
                   <div className="tool-header">
                     <span className="tool-name">{tc.tool_name}</span>
                     <span className="tool-type">{tc.tool_type}</span>
+                    {attrs.tool_subtype && (
+                      <span className={`tool-subtype ${attrs.tool_subtype}`}>{attrs.tool_subtype}</span>
+                    )}
                     <span className={`tool-status ${tc.status}`}>{tc.status}</span>
                     <span className="tool-duration">{tc.duration_ms?.toFixed(0)}ms</span>
                   </div>
+                  {(attrs.mcp_server || attrs.mcp_tool || attrs.rag_vector_db || attrs.rag_top_k || attrs.rag_recall_count) && (
+                    <div className="tool-meta">
+                      {attrs.mcp_server && <span className="meta-tag">MCP Server: {attrs.mcp_server}</span>}
+                      {attrs.mcp_tool && <span className="meta-tag">MCP Tool: {attrs.mcp_tool}</span>}
+                      {attrs.rag_vector_db && <span className="meta-tag">Vector DB: {attrs.rag_vector_db}</span>}
+                      {attrs.rag_top_k != null && <span className="meta-tag">Top K: {attrs.rag_top_k}</span>}
+                      {attrs.rag_recall_count != null && <span className="meta-tag">Recall: {attrs.rag_recall_count}</span>}
+                    </div>
+                  )}
                   <div className="tool-content">
                     <div className="tool-input">
                       <strong>Input:</strong>
@@ -126,7 +140,8 @@ function PromptReplay() {
                     )}
                   </div>
                 </div>
-              ))
+                )
+              })
             )}
           </section>
         </div>
@@ -136,3 +151,25 @@ function PromptReplay() {
 }
 
 export default PromptReplay
+
+// ---- helpers ----
+
+interface ToolAttrs {
+  tool_subtype?: string
+  mcp_server?: string
+  mcp_tool?: string
+  mcp_protocol_version?: string
+  rag_vector_db?: string
+  rag_top_k?: number
+  rag_recall_count?: number
+}
+
+function parseToolAttrs(raw: string | Record<string, unknown> | undefined): ToolAttrs {
+  if (!raw) return {}
+  try {
+    const parsed = typeof raw === 'string' ? JSON.parse(raw || '{}') : raw
+    return parsed || {}
+  } catch {
+    return {}
+  }
+}

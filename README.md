@@ -79,13 +79,14 @@
 ```
 agent-observability/
 ├── docker-compose.yml              # Docker 编排 (Kafka + ClickHouse)
+├── .env.example                    # 环境变量示例（API Key 等）
 ├── docker/
 │   └── clickhouse/
 │       └── init.sql                # ClickHouse 初始化 (5 业务表 + 2 聚合表 + 2 物化视图)
 │
 ├── sdk/                            # Python 探针 SDK
 │   ├── agent_insight_sdk/
-│   │   ├── __init__.py             # 模块入口 (15 个公开 API)
+│   │   ├── __init__.py             # 模块入口 (18 个公开 API)
 │   │   ├── context.py              # TraceContext 上下文管理 (contextvars)
 │   │   ├── interceptor.py          # [兼容保留] 原 OpenAIInterceptor (已别名到 LLMInterceptor)
 │   │   ├── stream_monitor.py       # StreamMonitor 流式响应监控
@@ -98,9 +99,14 @@ agent-observability/
 │   │       ├── openai_compatible.py# OpenAI / DeepSeek / vLLM / Ollama 等
 │   │       └── anthropic.py        # Anthropic Claude
 │   ├── examples/
-│   │   ├── example_simple_agent.py # 阶段1：无埋点简单 Agent 示例
-│   │   └── example_sdk_demo.py     # 阶段3：SDK 完整功能示例
+│   │   ├── example_simple_agent.py    # 阶段1：无埋点简单 Agent 示例
+│   │   ├── example_sdk_demo.py        # 阶段3：SDK 完整功能示例（多厂商 + Tool + Trace + Session）
+│   │   ├── example_mcp_rag_tools.py   # ToolSDK 进阶：MCP / RAG 装饰器示例
+│   │   ├── example_custom_provider.py # 自定义 Provider Adapter 接入示例
+│   │   └── example_rag_agent.py       # 端到端 RAG Agent 示例（全 Mock，无需 API Key）
 │   ├── tests/
+│   │   ├── conftest.py             # pytest 公共 fixture
+│   │   ├── README.md               # 测试说明
 │   │   ├── test_context.py         # TraceContext 单测
 │   │   ├── test_providers.py       # Provider Adapter 单测
 │   │   ├── test_session_sdk.py     # SessionSDK 单测
@@ -150,7 +156,9 @@ agent-observability/
     ├── index.html
     ├── package.json
     ├── tsconfig.json
-    └── vite.config.ts
+    ├── tsconfig.node.json
+    ├── vite.config.ts
+    └── README.md
 ```
 
 ## 快速开始
@@ -410,12 +418,29 @@ python examples/example_sdk_demo.py
 
 观察输出中的 span 上报日志。该脚本会：
 
-1. 演示 `LLMInterceptor` 多厂商 LLM 调用自动拦截（OpenAI / Anthropic / DeepSeek）
+1. 演示 `LLMInterceptor` 多厂商 LLM 调用自动拦截（OpenAI / Anthropic / DeepSeek / Ollama）
 2. 演示 `ToolSDK` 装饰器自动埋点 Tool 调用
 3. 演示 `TraceAPI` 显式 startTrace/startSpan/endSpan
 4. 演示 `SessionSDK` 自动聚合 Session 生命周期
 
-#### 5.3 模拟测试（发送模拟数据）
+> 未配置 API Key 时自动回退到模拟模式，无需真实 Key 即可观察埋点行为。
+
+#### 5.3 进阶示例（无需 API Key，全 Mock）
+
+```bash
+# ToolSDK 进阶：MCP 协议工具 & RAG 检索自动埋点
+python examples/example_mcp_rag_tools.py
+
+# 自定义 Provider Adapter：接入非内置 LLM 厂商
+python examples/example_custom_provider.py
+
+# 端到端 RAG Agent：检索 → LLM → MCP 持久化完整链路
+python examples/example_rag_agent.py
+```
+
+这三个示例全部使用 Mock，无需真实 LLM API Key 即可运行，启动后端后可在 Dashboard 看到完整 Trace 链路。
+
+#### 5.4 模拟测试（发送模拟数据）
 
 ```bash
 python tests/test_agent_simulation.py
@@ -423,7 +448,7 @@ python tests/test_agent_simulation.py
 
 该脚本会上报模拟的 Trace 和 Metrics 数据到后端。
 
-#### 5.4 在 Dashboard 查看数据
+#### 5.5 在 Dashboard 查看数据
 
 回到浏览器 http://localhost:3000，依次查看：
 

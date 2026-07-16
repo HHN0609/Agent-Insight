@@ -339,6 +339,7 @@ ALTER TABLE tool_calls  ADD COLUMN IF NOT EXISTS attributes String DEFAULT '{}' 
 ```
 agent-observability/
 ├── docker-compose.yml           # Kafka + ClickHouse
+├── .env.example                 # 环境变量示例（API Key 等）
 ├── ARCHITECTURE.md              # 本文档
 ├── README.md                    # 项目说明
 ├── docker/
@@ -349,19 +350,30 @@ agent-observability/
 │   └── docker_guide.md
 ├── sdk/                         # Python 探针 SDK
 │   ├── setup.py
-│   └── agent_insight_sdk/
-│       ├── context.py           # TraceContext
-│       ├── providers/           # Provider Adapter 模式
-│       │   ├── base.py          # LLMInterceptor
-│       │   ├── openai_compatible.py
-│       │   └── anthropic.py
-│       ├── stream_monitor.py    # 流式计时
-│       ├── session_sdk.py       # Session 自动聚合
-│       ├── tool_sdk.py          # Tool 装饰器（通用/MCP/RAG）
-│       ├── trace_api.py         # 显式 API
-│       └── uploader.py          # 批量上报器
+│   ├── SDK_USAGE.md             # SDK 完整使用文档
+│   ├── agent_insight_sdk/
+│   │   ├── __init__.py          # 模块入口（18 个公开 API）
+│   │   ├── context.py           # TraceContext
+│   │   ├── interceptor.py       # [兼容保留] OpenAIInterceptor 别名
+│   │   ├── providers/           # Provider Adapter 模式
+│   │   │   ├── base.py          # BaseProviderAdapter + LLMInterceptor
+│   │   │   ├── openai_compatible.py
+│   │   │   └── anthropic.py
+│   │   ├── stream_monitor.py    # 流式计时
+│   │   ├── session_sdk.py       # Session 自动聚合
+│   │   ├── tool_sdk.py          # Tool 装饰器（通用/MCP/RAG）
+│   │   ├── trace_api.py         # 显式 API
+│   │   └── uploader.py          # 批量上报器
+│   ├── examples/                # 示例集
+│   │   ├── example_simple_agent.py    # 阶段1：无埋点简单 Agent
+│   │   ├── example_sdk_demo.py        # SDK 完整功能（多厂商 + Tool + Trace + Session）
+│   │   ├── example_mcp_rag_tools.py   # ToolSDK 进阶：MCP / RAG 装饰器
+│   │   ├── example_custom_provider.py # 自定义 Provider Adapter 接入
+│   │   └── example_rag_agent.py       # 端到端 RAG Agent（全 Mock）
+│   └── tests/                   # 单测 + 集成测试
 ├── backend/                     # FastAPI 服务
 │   ├── requirements.txt
+│   ├── README.md
 │   └── app/
 │       ├── main.py              # 入口
 │       ├── config.py            # 配置
@@ -378,6 +390,7 @@ agent-observability/
 │           └── client.py        # 读写客户端
 └── frontend/                    # React 前端
     ├── vite.config.ts
+    ├── README.md
     └── src/
         ├── types.ts             # 类型定义
         ├── App.tsx              # 路由 + 布局

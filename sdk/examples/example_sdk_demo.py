@@ -28,6 +28,7 @@ import asyncio
 import os
 import sys
 import time
+from datetime import datetime
 from typing import Any, Optional
 
 # 尝试加载 .env 文件（如果安装了 python-dotenv）
@@ -45,6 +46,7 @@ from agent_insight_sdk import (
     ToolSDK,
     TraceAPI,
     AsyncBatchUploader,
+    SpanData,
     set_current_context,
     get_current_context,
     clear_current_context,

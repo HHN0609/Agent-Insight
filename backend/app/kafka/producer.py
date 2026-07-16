@@ -4,7 +4,7 @@ Kafka 生产者 - 用于将 SDK 上报的数据投递到 Kafka
 设计要点：
   - send_and_wait() 会阻塞事件循环，高并发下退化为串行
   - 改用 send() + add_done_callback，FastAPI handler 立即返回
-  - batch send 只记录错误日志，不向上抛异常（数据已由 SDK 重试兜底）
+  - batch send 的 Kafka 投递错误只记录日志（数据已由 SDK 重试兜底）；producer 未初始化时仍会抛 RuntimeError
 """
 
 import json
@@ -69,7 +69,8 @@ async def send_batch(data: List[Dict[str, Any]]) -> None:
 
     - 使用 send() 而非 send_and_wait()
     - 回调中记录成功/失败，不阻塞 FastAPI handler
-    - 不会 raise 异常，保 Collector 的快速返回路径不受影响
+    - Kafka 投递错误仅记录日志（数据由 SDK 侧重试兜底）；但 producer 未初始化时会
+      raise RuntimeError，调用方（collect.py）已用 try/except 兜底
     """
     if not _producer:
         raise RuntimeError("Kafka producer not initialized")

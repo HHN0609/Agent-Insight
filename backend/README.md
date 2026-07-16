@@ -200,7 +200,7 @@ topic-0/
 
 ### 分流消费
 
-本项目的 Consumer 消费 Kafka 消息后，按 `span_type` 字段分流入 5 张 ClickHouse 表。批量阈值 50 条 + 每 5 秒强制刷新，兼顾吞吐和延迟。
+本项目的 Consumer 消费 Kafka 消息后，按 `span_type` 字段分流入 5 张 ClickHouse 表。达到批量阈值 50 条时刷新；`FLUSH_INTERVAL=5s` 仅作为 poll 超时唤醒循环（不强制刷新），未达阈值的残留数据在 Consumer 关闭时统一刷新。
 
 ### Token 成本计算
 

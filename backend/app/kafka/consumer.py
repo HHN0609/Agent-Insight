@@ -91,11 +91,11 @@ async def consume_loop() -> None:
         "session": (insert_sessions, flush_sessions),
     }
 
-    FLUSH_INTERVAL = 5.0  # 即使未达阈值，每 5 秒强制刷新一次
+    FLUSH_INTERVAL = 5.0  # poll 超时：唤醒循环重新检查批量阈值（本身不强制刷新）
 
     try:
         while True:
-            # 带超时的 poll — 同时支持批量阈值和定期刷新
+            # 带超时的 poll — 超时仅唤醒循环，刷新仍只看批量阈值
             try:
                 msg = await asyncio.wait_for(
                     _consumer.getone(),
@@ -120,9 +120,9 @@ async def consume_loop() -> None:
                         batches["trace"].append(parsed)
 
             except asyncio.TimeoutError:
-                pass  # 超时后走定期刷新逻辑
+                pass  # 超时仅唤醒循环，下方仍按批量阈值判断是否刷新
 
-            # 批量刷新（阈值或定期）
+            # 批量刷新：仅当达到 BATCH_SIZE 阈值时触发；未达阈值的残留数据在 finally 中关闭时刷新
             for key, batch in batches.items():
                 if len(batch) >= BATCH_SIZE:
                     await flush_map[key][1](batch)
@@ -164,7 +164,7 @@ def parse_trace(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 def _extract(attrs: dict, key: str, default: Any = 0) -> Any:
-    """优先从 item 顶层读取，然后从 attributes 中回退"""
+    """从 attrs 字典读取 key，不存在则返回 default"""
     return attrs.get(key, default)
 
 

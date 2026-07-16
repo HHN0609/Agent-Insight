@@ -23,7 +23,7 @@ async def get_traces(
     查询链路追踪数据
 
     - 不传 trace_id: 返回最近的链路列表
-    - 传 trace_id: 返回该链路的完整 span 树
+    - 传 trace_id: 返回该链路的全部 span（扁平列表，含 parent_span_id，可由调用方构建 span 树）
     """
     try:
         traces = await query_traces(trace_id=trace_id, limit=limit)

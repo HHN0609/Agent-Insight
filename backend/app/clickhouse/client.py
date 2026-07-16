@@ -298,7 +298,7 @@ async def insert_sessions(data: List[Dict[str, Any]]) -> None:
 async def query_traces(
     trace_id: Optional[str] = None, limit: int = 100
 ) -> List[Dict[str, Any]]:
-    """查询 trace 数据；传 trace_id 返回完整 span 树（按时间正序）"""
+    """查询 trace 数据；传 trace_id 返回该链路全部 span 的扁平列表（按时间正序，含 parent_span_id）"""
     return await _select_by_filter_or_recent(
         "traces", "trace_id", trace_id, limit, "traces", asc_when_filtered=True
     )

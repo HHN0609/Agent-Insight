@@ -1,5 +1,7 @@
 """
-FastAPI 后端应用入口
+Agent Insight Backend 应用包
+
+FastAPI 应用入口为 app.main:app（uvicorn app.main:app）；本文件中的 app 为历史遗留副本，版本与路由可能滞后于 main.py。
 """
 
 from fastapi import FastAPI

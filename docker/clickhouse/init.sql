@@ -22,6 +22,7 @@ CREATE TABLE IF NOT EXISTS llm_metrics (
     trace_id String,
     span_id String,
     model_name String,
+    provider String DEFAULT '',
     prefill_ms Float64,
     decode_ms Float64,
     input_tokens UInt32,
@@ -64,6 +65,7 @@ CREATE TABLE IF NOT EXISTS tool_calls (
     duration_ms Float64 DEFAULT 0,
     status String DEFAULT 'success',
     error String DEFAULT '',
+    attributes String DEFAULT '{}',
     created_at DateTime DEFAULT now()
 ) ENGINE = MergeTree()
 PARTITION BY toYYYYMM(created_at)

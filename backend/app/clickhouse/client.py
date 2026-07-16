@@ -75,11 +75,14 @@ _SPECS: Dict[str, TableSpec] = {
     "metrics": TableSpec(
         name="llm_metrics",
         insert_columns=(
-            "trace_id", "span_id", "model_name",
+            "trace_id", "span_id", "model_name", "provider",
             "prefill_ms", "decode_ms",
             "input_tokens", "output_tokens",
             "tps", "cost_usd",
         ),
+        insert_defaults={
+            "provider": "",
+        },
         # metrics 走自定义聚合查询，不暴露简单 query_columns
     ),
     "prompts": TableSpec(
@@ -105,15 +108,18 @@ _SPECS: Dict[str, TableSpec] = {
         insert_columns=(
             "trace_id", "span_id", "tool_name", "tool_type",
             "input_data", "output_data", "duration_ms", "status", "error",
+            "attributes",
         ),
         insert_defaults={
             "tool_name": "unknown", "tool_type": "generic",
             "input_data": "{}", "output_data": "{}",
             "duration_ms": 0, "status": "success", "error": "",
+            "attributes": "{}",
         },
         query_columns=(
             "trace_id", "span_id", "tool_name", "tool_type",
-            "input_data", "output_data", "duration_ms", "status", "error", "created_at",
+            "input_data", "output_data", "duration_ms", "status", "error",
+            "attributes", "created_at",
         ),
     ),
     "sessions": TableSpec(

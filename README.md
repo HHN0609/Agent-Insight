@@ -461,9 +461,9 @@ ClickHouse 包含 5 张业务表 + 2 张聚合表 + 2 个物化视图：
 | 表名 | 说明 | Engine |
 |------|------|--------|
 | `agent_traces` | 链路追踪 Span 数据 | MergeTree |
-| `llm_metrics` | LLM 性能指标（prefill/decode/TPS/cost） | MergeTree |
+| `llm_metrics` | LLM 性能指标（prefill/decode/TPS/cost/provider） | MergeTree |
 | `prompt_logs` | Prompt/Response 记录 | MergeTree |
-| `tool_calls` | Tool 调用记录 | MergeTree |
+| `tool_calls` | Tool 调用记录（含 MCP/RAG 元数据 attributes） | MergeTree |
 | `sessions` | Agent Session 会话 | MergeTree |
 | `model_stats_daily` | 模型按日聚合统计表（由 `model_stats_daily_mv` 物化视图写入） | AggregatingMergeTree |
 | `tool_stats` | Tool 调用聚合统计表（由 `tool_stats_mv` 物化视图写入） | AggregatingMergeTree |

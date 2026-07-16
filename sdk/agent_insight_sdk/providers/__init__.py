@@ -5,7 +5,7 @@ Provider Adapter 包 — 多厂商 LLM 拦截适配器
   - OpenAI / DeepSeek / vLLM / Ollama / Groq / Together（OpenAI 兼容协议）
   - Anthropic Claude
 
-扩展方式：继承 BaseProviderAdapter，实现 supports() / _wrap_call() / extract() 三个方法
+扩展方式：继承 BaseProviderAdapter，实现 supports() / _wrap_call() / _unwrap_client() 三个抽象方法（extract() 有默认实现，按需重写）
 """
 
 from .base import BaseProviderAdapter, LLMInterceptor, LLMCallRecord, register_adapter

@@ -1,5 +1,5 @@
 """
-流式响应监控模块 - 拦截 OpenAI 流式响应，计算 prefill_ms 和 decode_ms
+流式响应监控模块 - 拦截多厂商 LLM 流式响应，计算 prefill_ms 和 decode_ms
 """
 
 import time

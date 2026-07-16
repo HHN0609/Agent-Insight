@@ -9,7 +9,7 @@ Agent Insight SDK - AI Agent 可观测性探针 SDK
 - StreamMonitor: 流式响应监控 (prefill/decode/TPS)
 - SessionSDK: Session 生命周期自动聚合
 - ToolSDK: Tool 调用自动埋点
-- TraceAPI: startTrace/startSpan/endSpan 显式 API
+- TraceAPI: start_trace/start_span/end_span/end_trace 显式 API
 - AsyncBatchUploader: 异步批量上报
 
 Provider 扩展：继承 BaseProviderAdapter 即可接入新厂商的 LLM SDK

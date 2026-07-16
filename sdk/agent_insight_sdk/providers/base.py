@@ -51,10 +51,13 @@ class LLMCallRecord:
 class BaseProviderAdapter(ABC):
     """LLM Provider 适配器基类
 
-    子类只需实现三个核心方法：
+    子类必须实现三个抽象方法：
       - supports(client)   → 是否能处理该客户端
       - _wrap_call(client, interceptor) → 返回包装后的客户端
-      - extract(original_create, kwargs, response, perf_start, is_stream) → LLMCallRecord
+      - _unwrap_client(wrapped) → 恢复客户端原始方法
+
+    可选重写（带默认实现，适合 OpenAI 兼容格式）：
+      - extract(kwargs, response, perf_start, is_stream) → LLMCallRecord
     """
 
     provider_name: str = "unknown"

@@ -131,7 +131,7 @@ class AsyncBatchUploader:
         self._backend_url = backend_url
         self._batch_size = batch_size
         self._flush_interval = flush_interval
-        # 有界队列：超出容量时 put_nowait 会报 QueueFull，调用方可感知背压
+        # 有界队列：超出容量时 put_nowait 抛 QueueFull，由 submit() 捕获后丢弃并告警（调用方不感知）
         self._queue: asyncio.Queue = asyncio.Queue(maxsize=self.QUEUE_MAXSIZE)
         self._running = False
         self._task: Optional[asyncio.Task] = None
@@ -232,7 +232,7 @@ class AsyncBatchUploader:
                 except asyncio.TimeoutError:
                     pass
 
-                # 达到批量阈值或超时时刷新
+                # 仅达到批量阈值时刷新；未达阈值的数据在 stop() 时统一刷新
                 if len(batch) >= self._batch_size:
                     await self._flush_batch(batch)
                     batch = []

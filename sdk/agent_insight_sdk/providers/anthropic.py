@@ -152,7 +152,7 @@ class AnthropicAdapter(BaseProviderAdapter):
     def _wrap_stream(
         self, stream, interceptor, ctx, kwargs, start_time, perf_start
     ):
-        """Anthropic 流式响应: 直接回传原始 stream，在上层由 StreamMonitor 处理"""
+        """Anthropic 流式响应: 用 StreamMonitor/MonitoredStream 包装 stream，迭代结束时在本层提取指标并上报"""
         # Anthropic stream 事件是迭代器
         from ..stream_monitor import StreamMonitor, MonitoredStream
 

@@ -246,8 +246,8 @@ class SessionSDK:
                 model_name, input_tokens, output_tokens
             )
         elif span_type == "prompt":
-            # prompt span 也携带 token，但通常与 llm_metrics 重复，
-            # 因此只在缺少 llm_metrics 时作为兜底
+            # prompt span 携带的 token 与 llm_metrics 重复，这里直接忽略；
+            # token 与成本统计以 llm_metrics span 为准
             pass
 
     def _estimate_cost(

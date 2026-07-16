@@ -1,5 +1,5 @@
 """
-Trace API 模块 - 提供 startTrace/startSpan/endSpan 等显式 API
+Trace API 模块 - 提供 start_trace/start_span/end_span/end_trace 等显式 API
 
 对外提供类似 OpenTelemetry 的 API，业务代码可手动控制 Trace 生命周期。
 

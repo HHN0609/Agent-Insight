@@ -48,13 +48,13 @@ backend/
 
 ## 支持的 5 种数据类型
 
-| span_type      | ClickHouse 表   | 说明                       |
-|----------------|-----------------|---------------------------|
-| `trace`        | `agent_traces`  | 链路追踪 span              |
-| `llm_metrics`  | `llm_metrics`   | LLM 性能指标（prefill/decode/TPS） |
-| `prompt`       | `prompt_logs`   | Prompt/Response 日志       |
-| `tool_call`    | `tool_calls`    | Tool 调用记录              |
-| `session`      | `sessions`      | Session 会话聚合数据       |
+| span_type      | ClickHouse 表   | 说明                                   |
+|----------------|-----------------|----------------------------------------|
+| `trace`        | `agent_traces`  | 链路追踪 span（含 `attributes` 扩展属性） |
+| `llm_metrics`  | `llm_metrics`   | LLM 性能指标（prefill/decode/TPS/`provider`） |
+| `prompt`       | `prompt_logs`   | Prompt/Response 日志                   |
+| `tool_call`    | `tool_calls`    | Tool 调用记录（含 `attributes`：MCP/RAG 元数据） |
+| `session`      | `sessions`      | Session 会话聚合数据                    |
 
 ## API 接口
 
@@ -194,18 +194,24 @@ topic-0/
 
 ### Token 成本计算
 
-Consumer 内置主流模型的 Token 定价表，写入 ClickHouse 时自动计算 `cost_usd`：
+Consumer 内置主流模型的 Token 定价表（单位：USD / 1M tokens），写入 ClickHouse 时自动计算 `cost_usd`：
 
-| 模型            | 输入 $/1K tokens | 输出 $/1K tokens |
-|-----------------|-----------------|------------------|
-| gpt-4           | 0.03            | 0.06             |
-| gpt-4-turbo     | 0.01            | 0.03             |
-| gpt-3.5-turbo   | 0.0005          | 0.0015           |
-| claude-3-opus   | 0.015           | 0.075            |
-| claude-3-sonnet | 0.003           | 0.015            |
-| claude-3-haiku  | 0.00025         | 0.00125          |
+| 模型              | 输入 $/1M tokens | 输出 $/1M tokens |
+|-------------------|-----------------|------------------|
+| gpt-4o            | 5.00            | 15.00            |
+| gpt-4o-mini       | 0.15            | 0.60             |
+| gpt-4-turbo       | 10.00           | 30.00            |
+| gpt-4             | 30.00           | 60.00            |
+| gpt-3.5-turbo     | 0.50            | 1.50             |
+| claude-3-opus     | 15.00           | 75.00            |
+| claude-3-sonnet   | 3.00            | 15.00            |
+| claude-3-haiku    | 0.25            | 1.25             |
+| deepseek-chat     | 0.14            | 0.28             |
+| deepseek-reasoner | 0.55            | 2.19             |
 
-未匹配到的模型按 $0.001 / $0.002 默认价格计算。
+**匹配策略**：按 key 长度降序对 `model_name` 做前缀匹配，优先命中更具体的长名（`gpt-4-turbo` 优先于 `gpt-4`，避免短 key 误匹配）。未匹配到的模型按兜底价 $1.00 / $2.00（输入/输出，per 1M tokens）计算。
+
+> 价格表与 SDK 端 `agent_insight_sdk.session_sdk.DEFAULT_PRICING` 保持一致，修改任一处时请同步另一处。
 
 ### 容错设计
 

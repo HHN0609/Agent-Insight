@@ -222,6 +222,27 @@ tool_stats_mv
 
 > 所有表和物化视图由 `docker/clickhouse/init.sql` 在容器首次启动时自动创建。如果未显示，请检查 Docker 日志：`docker logs agent-insight-clickhouse`
 
+##### 已有库的升级迁移（v0.3.0 → v0.3.1）
+
+`init.sql` 仅对**全新创建**的 ClickHouse 数据库生效。如果是从旧版本升级（已有数据），需手动执行以下 ALTER 语句补齐新增列：
+
+```bash
+# llm_metrics 新增 provider 列
+curl 'http://localhost:8123/?query=ALTER+TABLE+llm_metrics+ADD+COLUMN+IF+NOT+EXISTS+provider+String+DEFAULT+%27%27+AFTER+model_name'
+
+# tool_calls 新增 attributes 列
+curl 'http://localhost:8123/?query=ALTER+TABLE+tool_calls+ADD+COLUMN+IF+NOT+EXISTS+attributes+String+DEFAULT+%27%7B%7D%27+AFTER+error'
+```
+
+或用 clickhouse-client 执行：
+
+```sql
+ALTER TABLE llm_metrics ADD COLUMN IF NOT EXISTS provider String DEFAULT '' AFTER model_name;
+ALTER TABLE tool_calls  ADD COLUMN IF NOT EXISTS attributes String DEFAULT '{}' AFTER error;
+```
+
+> 两条语句均为幂等（`IF NOT EXISTS`），可重复执行。
+
 #### 1.4 验证 Kafka
 
 ```bash
@@ -461,9 +482,9 @@ ClickHouse 包含 5 张业务表 + 2 张聚合表 + 2 个物化视图：
 | 表名 | 说明 | Engine |
 |------|------|--------|
 | `agent_traces` | 链路追踪 Span 数据 | MergeTree |
-| `llm_metrics` | LLM 性能指标（prefill/decode/TPS/cost） | MergeTree |
+| `llm_metrics` | LLM 性能指标（prefill/decode/TPS/cost/provider） | MergeTree |
 | `prompt_logs` | Prompt/Response 记录 | MergeTree |
-| `tool_calls` | Tool 调用记录 | MergeTree |
+| `tool_calls` | Tool 调用记录（含 MCP/RAG 元数据 attributes） | MergeTree |
 | `sessions` | Agent Session 会话 | MergeTree |
 | `model_stats_daily` | 模型按日聚合统计表（由 `model_stats_daily_mv` 物化视图写入） | AggregatingMergeTree |
 | `tool_stats` | Tool 调用聚合统计表（由 `tool_stats_mv` 物化视图写入） | AggregatingMergeTree |

@@ -171,12 +171,14 @@ def _extract(attrs: dict, key: str, default: Any = 0) -> Any:
 def parse_llm_metrics(item: Dict[str, Any]) -> Dict[str, Any]:
     attrs = item.get("attributes", {})
     model = item.get("model_name") or attrs.get("model_name", "unknown")
+    provider = item.get("provider") or attrs.get("provider", "")
     input_tokens = item.get("input_tokens") or attrs.get("input_tokens", 0)
     output_tokens = item.get("output_tokens") or attrs.get("output_tokens", 0)
     return {
         "trace_id": item["trace_id"],
         "span_id": item["span_id"],
         "model_name": model,
+        "provider": provider,
         "prefill_ms": item.get("prefill_ms") or attrs.get("prefill_ms", 0),
         "decode_ms": item.get("decode_ms") or attrs.get("decode_ms", 0),
         "input_tokens": input_tokens,
@@ -213,6 +215,7 @@ def parse_tool_call(item: Dict[str, Any]) -> Dict[str, Any]:
         "duration_ms": item.get("duration_ms", 0),
         "status": item.get("status", "success"),
         "error": item.get("error", ""),
+        "attributes": json.dumps(item.get("attributes", {}), ensure_ascii=False),
     }
 
 
@@ -242,23 +245,45 @@ PARSE_MAP = {
 
 # ---- Token 成本计算 ----
 
+# 模型单价表：USD / 1M tokens
+# 与 SDK 端 agent_insight_sdk.session_sdk.DEFAULT_PRICING 保持一致，
+# 修改任一处时请同步另一处。
+MODEL_PRICING: Dict[str, Dict[str, float]] = {
+    "gpt-4o": {"input": 5.00, "output": 15.00},
+    "gpt-4o-mini": {"input": 0.15, "output": 0.60},
+    "gpt-4-turbo": {"input": 10.00, "output": 30.00},
+    "gpt-4": {"input": 30.00, "output": 60.00},
+    "gpt-3.5-turbo": {"input": 0.50, "output": 1.50},
+    "claude-3-opus": {"input": 15.00, "output": 75.00},
+    "claude-3-sonnet": {"input": 3.00, "output": 15.00},
+    "claude-3-haiku": {"input": 0.25, "output": 1.25},
+    "deepseek-chat": {"input": 0.14, "output": 0.28},
+    "deepseek-reasoner": {"input": 0.55, "output": 2.19},
+}
+
+# 兜底单价：USD / 1M tokens
+DEFAULT_PRICING = {"input": 1.00, "output": 2.00}
+
 
 def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> float:
-    """计算虚拟 Token 成本（美元）"""
-    cost_map = {
-        "gpt-4": (0.03, 0.06),
-        "gpt-4-turbo": (0.01, 0.03),
-        "gpt-3.5-turbo": (0.0005, 0.0015),
-        "claude-3-opus": (0.015, 0.075),
-        "claude-3-sonnet": (0.003, 0.015),
-        "claude-3-haiku": (0.00025, 0.00125),
-    }
-    for key, (input_cost, output_cost) in cost_map.items():
-        if key in model_name.lower():
-            return (input_tokens / 1000 * input_cost) + (
-                output_tokens / 1000 * output_cost
-            )
-    return (input_tokens / 1000 * 0.001) + (output_tokens / 1000 * 0.002)
+    """计算 Token 成本（美元）
+
+    匹配策略：按 key 长度降序精确匹配 model_name 的前缀，
+    避免短 key（如 gpt-4）误匹配长 key（如 gpt-4-turbo）。
+    """
+    name_lower = model_name.lower()
+    price = None
+    # 按 key 长度降序，优先匹配更具体的长名（gpt-4-turbo 先于 gpt-4）
+    for key in sorted(MODEL_PRICING, key=len, reverse=True):
+        if name_lower.startswith(key):
+            price = MODEL_PRICING[key]
+            break
+    if price is None:
+        price = DEFAULT_PRICING
+
+    input_cost = input_tokens * price["input"] / 1_000_000
+    output_cost = output_tokens * price["output"] / 1_000_000
+    return input_cost + output_cost
 
 
 # ---- 批量写入 ----

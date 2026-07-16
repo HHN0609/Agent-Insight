@@ -216,12 +216,13 @@ React 前端
 | trace_id | String | 关联链路 |
 | span_id | String | 关联 Span |
 | model_name | String | 模型名 |
+| provider | String | LLM 厂商标识（openai-compatible / anthropic 等） |
 | prefill_ms | Float64 | 首 token 延迟 |
 | decode_ms | Float64 | 生成阶段耗时 |
 | input_tokens | UInt32 | 输入 token 数 |
 | output_tokens | UInt32 | 输出 token 数 |
 | tps | Float64 | token/秒 |
-| cost_usd | Float64 | 费用（USD） |
+| cost_usd | Float64 | 费用（USD，由后端按价格表计算） |
 
 **prompt_logs** —— Prompt/Response 日志
 
@@ -246,12 +247,13 @@ React 前端
 | trace_id | String | 关联链路 |
 | span_id | String | 关联 Span |
 | tool_name | String | Tool 名称 |
-| tool_type | String | Tool 类型 |
+| tool_type | String | Tool 类型（generic / mcp / rag） |
 | input_data | String | 输入参数 JSON |
 | output_data | String | 返回结果 JSON |
 | duration_ms | UInt32 | 耗时 |
 | status | String | success / error |
 | error | String | 错误信息 |
+| attributes | String | 扩展属性 JSON（MCP/RAG 元数据：mcp_server、rag_vector_db 等） |
 
 **sessions** —— 会话汇总
 
@@ -304,6 +306,17 @@ React 前端
 ```bash
 docker-compose up -d
 ```
+
+### ClickHouse 表结构升级迁移
+
+`docker/clickhouse/init.sql` 仅在容器**首次启动**（数据卷为空）时执行。已有数据的库升级到新版表结构（v0.3.0 → v0.3.1，新增 `llm_metrics.provider` 与 `tool_calls.attributes` 列）需手动执行：
+
+```sql
+ALTER TABLE llm_metrics ADD COLUMN IF NOT EXISTS provider String DEFAULT '' AFTER model_name;
+ALTER TABLE tool_calls  ADD COLUMN IF NOT EXISTS attributes String DEFAULT '{}' AFTER error;
+```
+
+> 两条语句均幂等（`IF NOT EXISTS`），可重复执行。如需重建库，执行 `docker-compose down -v` 清空数据卷后重新 `up`，init.sql 会自动建表。
 
 ---
 

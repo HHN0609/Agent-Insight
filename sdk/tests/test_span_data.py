@@ -40,7 +40,7 @@ def test_prompt_span_dict():
         start_time="2026-01-01T00:00:00",
         end_time="2026-01-01T00:00:01",
         span_type="prompt",
-        model_name="gpt-4o",
+        model_name="gpt-5.4",
         prompt="hi",
         response="hello",
         input_tokens=10,
@@ -52,7 +52,7 @@ def test_prompt_span_dict():
     )
     d = span.to_dict()
 
-    assert d["model_name"] == "gpt-4o"
+    assert d["model_name"] == "gpt-5.4"
     assert d["prompt"] == "hi"
     assert d["response"] == "hello"
     assert d["input_tokens"] == 10

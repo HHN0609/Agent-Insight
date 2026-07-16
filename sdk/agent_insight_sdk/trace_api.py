@@ -56,7 +56,7 @@ class TraceAPI:
         开始一个新的 Span（作为当前 context 的子 span）
 
         用法：
-            span_ctx = api.start_span("llm_call", attributes={"model": "gpt-4"})
+            span_ctx = api.start_span("llm_call", attributes={"model": "gpt-5.4"})
         """
         parent_ctx = get_current_context()
         if parent_ctx:

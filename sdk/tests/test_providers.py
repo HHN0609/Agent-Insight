@@ -43,7 +43,7 @@ async def test_openai_compatible_interceptor_non_stream(fake_uploader):
     set_current_context(root)
 
     result = wrapped.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5.4-mini",
         messages=[{"role": "user", "content": "hi"}],
     )
 
@@ -56,13 +56,13 @@ async def test_openai_compatible_interceptor_non_stream(fake_uploader):
     prompt_spans = [s for s in fake_uploader.spans if s["span_type"] == "prompt"]
 
     assert len(trace_spans) == 1
-    assert trace_spans[0]["attributes"]["model"] == "gpt-4o-mini"
+    assert trace_spans[0]["attributes"]["model"] == "gpt-5.4-mini"
 
     assert len(metrics_spans) == 1
     attrs = metrics_spans[0]["attributes"]
     assert attrs["input_tokens"] == 10
     assert attrs["output_tokens"] == 20
-    assert attrs["model_name"] == "gpt-4o-mini"
+    assert attrs["model_name"] == "gpt-5.4-mini"
 
     assert len(prompt_spans) == 1
     assert prompt_spans[0]["prompt"] == "hi"
@@ -86,7 +86,7 @@ async def test_anthropic_interceptor_non_stream(fake_uploader):
     set_current_context(root)
 
     result = wrapped.messages.create(
-        model="claude-3-haiku",
+        model="claude-haiku-4-5",
         max_tokens=100,
         messages=[{"role": "user", "content": "hi"}],
     )
@@ -100,7 +100,7 @@ async def test_anthropic_interceptor_non_stream(fake_uploader):
     attrs = metrics_spans[0]["attributes"]
     assert attrs["input_tokens"] == 5
     assert attrs["output_tokens"] == 15
-    assert attrs["model_name"] == "claude-3-haiku"
+    assert attrs["model_name"] == "claude-haiku-4-5"
 
     interceptor.unwrap()
     clear_current_context()
@@ -131,7 +131,7 @@ async def test_openai_stream_interceptor(fake_uploader):
     set_current_context(root)
 
     stream = wrapped.chat.completions.create(
-        model="gpt-4",
+        model="gpt-5.4",
         messages=[{"role": "user", "content": "say hi"}],
         stream=True,
     )
@@ -153,7 +153,7 @@ async def test_openai_stream_interceptor(fake_uploader):
     metrics_spans = [s for s in fake_uploader.spans if s["span_type"] == "llm_metrics"]
     assert len(metrics_spans) == 1
     attrs = metrics_spans[0]["attributes"]
-    assert attrs["model_name"] == "gpt-4"
+    assert attrs["model_name"] == "gpt-5.4"
     assert attrs["output_tokens"] > 0
 
     interceptor.unwrap()
@@ -180,7 +180,7 @@ async def test_openai_interceptor_error_reports_span(fake_uploader):
 
     with pytest.raises(RuntimeError):
         wrapped.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.4",
             messages=[{"role": "user", "content": "hi"}],
         )
 
@@ -238,7 +238,7 @@ async def test_anthropic_stream_interceptor(fake_uploader):
     set_current_context(root)
 
     stream = wrapped.messages.create(
-        model="claude-3-haiku",
+        model="claude-haiku-4-5",
         max_tokens=100,
         messages=[{"role": "user", "content": "hi"}],
         stream=True,
@@ -256,7 +256,7 @@ async def test_anthropic_stream_interceptor(fake_uploader):
     metrics_spans = [s for s in fake_uploader.spans if s["span_type"] == "llm_metrics"]
     assert len(metrics_spans) == 1
     attrs = metrics_spans[0]["attributes"]
-    assert attrs["model_name"] == "claude-3-haiku"
+    assert attrs["model_name"] == "claude-haiku-4-5"
     assert attrs["output_tokens"] > 0
 
     interceptor.unwrap()
@@ -279,7 +279,7 @@ async def test_anthropic_multimodal_prompt(fake_uploader):
     set_current_context(root)
 
     wrapped.messages.create(
-        model="claude-3-sonnet",
+        model="claude-sonnet-5",
         max_tokens=100,
         messages=[
             {

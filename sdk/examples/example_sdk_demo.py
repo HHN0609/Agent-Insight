@@ -93,7 +93,7 @@ async def demo_llm_interceptor_openai():
 
     for question in ["1+1 等于几？", "什么是 AI Agent？"]:
         response = client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.4-mini",
             messages=[{"role": "user", "content": question}],
             stream=False,
         )
@@ -104,7 +104,7 @@ async def demo_llm_interceptor_openai():
     # 流式调用
     print("\n--- 流式调用 ---")
     stream = client.chat.completions.create(
-        model="gpt-4o-mini",
+        model="gpt-5.4-mini",
         messages=[{"role": "user", "content": "用一句话介绍 Rust 语言"}],
         stream=True,
     )
@@ -147,7 +147,7 @@ async def demo_llm_interceptor_anthropic():
     set_current_context(root)
 
     response = client.messages.create(
-        model="claude-3-haiku-20240307",
+        model="claude-haiku-4-5",
         max_tokens=100,
         messages=[{"role": "user", "content": "什么是可观测性？请用一句话回答"}],
     )
@@ -259,7 +259,7 @@ async def demo_trace_api():
     ctx = trace.start_trace(name="agent_complete_flow")
 
     # LLM 调用 Span
-    llm_span = trace.start_span(name="llm_reasoning", attributes={"model": "gpt-4"})
+    llm_span = trace.start_span(name="llm_reasoning", attributes={"model": "gpt-5.4"})
     time.sleep(0.3)  # 模拟 LLM 调用
     trace.end_span(llm_span, span_type="trace")
 
@@ -310,7 +310,7 @@ async def demo_session_lifecycle():
         trace.end_span(span)
 
     # 再模拟一次 LLM 调用，验证 token / 成本自动聚合
-    llm_span = trace.start_span(name="llm_summary", attributes={"model": "gpt-4o-mini"})
+    llm_span = trace.start_span(name="llm_summary", attributes={"model": "gpt-5.4-mini"})
     metrics_span = SpanData(
         trace_id=sess.session_id,
         span_id=llm_span.span_id,
@@ -320,7 +320,7 @@ async def demo_session_lifecycle():
         end_time=datetime.utcnow().isoformat(),
         span_type="llm_metrics",
         attributes={
-            "model_name": "gpt-4o-mini",
+            "model_name": "gpt-5.4-mini",
             "prefill_ms": 100.0,
             "decode_ms": 200.0,
             "input_tokens": 1000,

@@ -12,7 +12,7 @@
 |------|------|------|
 | trace_id | String | "a1b2c3d4..." |
 | span_id | String | "e5f6g7h8..." |
-| model_name | String | "gpt-4o" |
+| model_name | String | "gpt-5.4" |
 | prefill_ms | Float64 | 523.7 |
 | decode_ms | Float64 | 2100.3 |
 | input_tokens | UInt32 | 1500 |
@@ -293,13 +293,13 @@ ORDER BY (model_name, created_at);
 ```sql
 -- 单条插入（不推荐，ClickHouse 擅长批量）
 INSERT INTO llm_metrics (trace_id, span_id, model_name, prefill_ms, decode_ms, input_tokens, output_tokens, tps, cost_usd)
-VALUES ('trace-001', 'span-001', 'gpt-4o', 523.7, 2100.3, 1500, 800, 380.5, 0.035);
+VALUES ('trace-001', 'span-001', 'gpt-5.4', 523.7, 2100.3, 1500, 800, 380.5, 0.035);
 
 -- 批量插入（推荐）
 INSERT INTO llm_metrics (trace_id, span_id, model_name, prefill_ms, decode_ms, input_tokens, output_tokens, tps, cost_usd)
 VALUES
-    ('trace-002', 'span-002', 'gpt-4o', 480.2, 1900.1, 1200, 600, 315.7, 0.028),
-    ('trace-003', 'span-003', 'claude-3', 610.5, 2500.8, 2000, 1000, 400.0, 0.045),
+    ('trace-002', 'span-002', 'gpt-5.4', 480.2, 1900.1, 1200, 600, 315.7, 0.028),
+    ('trace-003', 'span-003', 'claude-sonnet-5', 610.5, 2500.8, 2000, 1000, 400.0, 0.045),
     ('trace-004', 'span-004', 'qwen-max', 350.1, 1500.2, 800, 400, 266.5, 0.012);
 ```
 
@@ -321,11 +321,11 @@ GROUP BY model_name
 ORDER BY total_requests DESC;
 
 -- 结果示例：
--- ┌─model_name─┬─total_requests─┬─avg_prefill_ms─┬─avg_tps─┬─total_cost─┐
--- │ gpt-4o     │           2    │          501.9 │  348.1  │     0.0630 │
--- │ claude-3   │           1    │          610.5 │  400.0  │     0.0450 │
--- │ qwen-max   │           1    │          350.1 │  266.5  │     0.0120 │
--- └────────────┴────────────────┴────────────────┴─────────┴────────────┘
+-- ┌─model_name──────┬─total_requests─┬─avg_prefill_ms─┬─avg_tps─┬─total_cost─┐
+-- │ gpt-5.4         │           2    │          501.9 │  348.1  │     0.0630 │
+-- │ claude-sonnet-5 │           1    │          610.5 │  400.0  │     0.0450 │
+-- │ qwen-max        │           1    │          350.1 │  266.5  │     0.0120 │
+-- └─────────────────┴────────────────┴────────────────┴─────────┴────────────┘
 
 -- 查询某条完整链路
 SELECT * FROM agent_traces

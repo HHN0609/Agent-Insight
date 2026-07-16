@@ -31,7 +31,7 @@ async def test_collect():
             "start_time": "2026-06-28T10:00:00.000",
             "end_time": "2026-06-28T10:00:01.000",
             "span_type": "trace",
-            "attributes": {"model": "gpt-4", "test": True},
+            "attributes": {"model": "gpt-5.4", "test": True},
         },
         {
             "trace_id": "test-trace-001",
@@ -42,7 +42,7 @@ async def test_collect():
             "end_time": "2026-06-28T10:00:00.900",
             "span_type": "llm_metrics",
             "attributes": {
-                "model_name": "gpt-4",
+                "model_name": "gpt-5.4",
                 "prefill_ms": 200,
                 "decode_ms": 600,
                 "input_tokens": 1000,

@@ -68,14 +68,14 @@ async def collect_data(data: List[Dict[str, Any]]):
         "start_time": "2026-06-28T10:00:00",
         "end_time": "2026-06-28T10:00:02",
         "span_type": "trace",
-        "attributes": {"model": "gpt-4"}
+        "attributes": {"model": "gpt-5.4"}
       },
       {
         "trace_id": "uuid",
         "span_id": "uuid",
         "span_type": "llm_metrics",
         "attributes": {
-          "model_name": "gpt-4",
+          "model_name": "gpt-5.4",
           "prefill_ms": 500,
           "decode_ms": 2000,
           "input_tokens": 1500,
@@ -87,7 +87,7 @@ async def collect_data(data: List[Dict[str, Any]]):
         "trace_id": "uuid",
         "span_id": "uuid",
         "span_type": "prompt",
-        "model_name": "gpt-4",
+        "model_name": "gpt-5.4",
         "prompt": "...",
         "response": "...",
         "input_tokens": 1500,

@@ -187,21 +187,21 @@ async def main():
     print("[Step 1] 向量检索...")
     await simulate_tool_call("vector_search", 120, uploader)
 
-    # Step 2: 调用 GPT-4 (非流式)
-    print("[Step 2] 调用 GPT-4 (非流式)...")
-    await simulate_llm_call_non_stream("gpt-4", 1500, 800, 2500, uploader)
+    # Step 2: 调用 GPT-5.4 (非流式)
+    print("[Step 2] 调用 GPT-5.4 (非流式)...")
+    await simulate_llm_call_non_stream("gpt-5.4", 1500, 800, 2500, uploader)
 
     # Step 3: 工具调用 - 代码执行
     print("[Step 3] 工具调用 - 代码执行...")
     await simulate_tool_call("code_executor", 350, uploader)
 
-    # Step 4: 调用 Claude-3 (流式)
-    print("[Step 4] 调用 Claude-3-Opus (流式)...")
-    await simulate_llm_call_stream("claude-3-opus", 2000, 1200, 800, 3500, uploader)
+    # Step 4: 调用 Claude Opus 4.8 (流式)
+    print("[Step 4] 调用 Claude-Opus-4.8 (流式)...")
+    await simulate_llm_call_stream("claude-opus-4-8", 2000, 1200, 800, 3500, uploader)
 
-    # Step 5: 调用 GPT-3.5 (流式)
-    print("[Step 5] 调用 GPT-3.5-Turbo (流式)...")
-    await simulate_llm_call_stream("gpt-3.5-turbo", 800, 500, 200, 1200, uploader)
+    # Step 5: 调用 GPT-5.4-nano (流式)
+    print("[Step 5] 调用 GPT-5.4-nano (流式)...")
+    await simulate_llm_call_stream("gpt-5.4-nano", 800, 500, 200, 1200, uploader)
 
     # Step 6: 最终总结工具调用
     print("[Step 6] 工具调用 - 结果汇总...")

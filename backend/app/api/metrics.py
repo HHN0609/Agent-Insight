@@ -18,7 +18,7 @@ router = APIRouter()
 async def compare_metrics(
     models: Optional[str] = Query(
         None,
-        description="模型名称列表，逗号分隔，如: gpt-4,claude-3-opus",
+        description="模型名称列表，逗号分隔，如: gpt-5.4,claude-opus-4-8",
     ),
     hours: int = Query(24, ge=1, le=720, description="查询时间范围（小时）"),
 ):

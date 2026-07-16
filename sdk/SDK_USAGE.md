@@ -74,14 +74,14 @@ async def main():
 
     # 3. 正常调用（接口不变，自动采集）
     response = wrapped_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-5.4",
         messages=[{"role": "user", "content": "Hello"}],
     )
     print(response.choices[0].message.content)
 
     # 4. 流式调用（自动采集 prefill/decode 时间）
     stream = wrapped_client.chat.completions.create(
-        model="gpt-3.5-turbo",
+        model="gpt-5.4-nano",
         messages=[{"role": "user", "content": "Tell me a story"}],
         stream=True,
     )
@@ -114,7 +114,7 @@ async def main():
     # 并发调用多个 LLM
     tasks = [
         wrapped_client.chat.completions.create(
-            model="gpt-4",
+            model="gpt-5.4",
             messages=[{"role": "user", "content": f"Question {i}"}],
         )
         for i in range(5)
@@ -228,7 +228,7 @@ async def main():
     api.end_span(attributes={"results_count": 10, "status": "success"})
 
     # 嵌套 Span
-    api.start_span("llm_call", attributes={"model": "gpt-4"})
+    api.start_span("llm_call", attributes={"model": "gpt-5.4"})
     await asyncio.sleep(0.5)
     api.end_span(attributes={"tokens": 150})
 
@@ -535,7 +535,7 @@ class StreamMetrics:
   "end_time": "2026-06-28T10:00:02.500",
   "span_type": "trace",
   "attributes": {
-    "model": "gpt-4",
+    "model": "gpt-5.4",
     "provider": "openai",
     "stream": false
   }
@@ -554,7 +554,7 @@ class StreamMetrics:
   "end_time": "2026-06-28T10:00:02.500",
   "span_type": "llm_metrics",
   "attributes": {
-    "model_name": "gpt-4",
+    "model_name": "gpt-5.4",
     "provider": "openai",
     "prefill_ms": 500.0,
     "decode_ms": 2000.0,
@@ -576,7 +576,7 @@ class StreamMetrics:
   "start_time": "2026-06-28T10:00:00.000",
   "end_time": "2026-06-28T10:00:02.500",
   "span_type": "prompt",
-  "model_name": "gpt-4",
+  "model_name": "gpt-5.4",
   "prompt": "Explain quantum computing",
   "response": "Quantum computing uses qubits...",
   "input_tokens": 1500,
@@ -619,7 +619,7 @@ async def compare_models(models: list[str], prompt: str):
     await asyncio.sleep(2)
     await uploader.stop()
 
-asyncio.run(compare_models(["gpt-4", "gpt-3.5-turbo", "claude-3-opus"], "Explain quantum computing"))
+asyncio.run(compare_models(["gpt-5.4", "gpt-5.4-nano", "claude-opus-4-8"], "Explain quantum computing"))
 ```
 
 ### ToolSDK + LLMInterceptor 组合使用
@@ -646,7 +646,7 @@ async def agent_with_tools():
     # Agent 循环
     search_results = await search("quantum computing")
     response = wrapped.chat.completions.create(
-        model="gpt-4",
+        model="gpt-5.4",
         messages=[
             {"role": "user", "content": "Explain quantum computing"},
             {"role": "assistant", "content": "Let me search for information."},
@@ -664,7 +664,7 @@ async def agent_with_tools():
 ```python
 try:
     response = wrapped_client.chat.completions.create(
-        model="gpt-4",
+        model="gpt-5.4",
         messages=[{"role": "user", "content": "Hello"}],
     )
 except Exception as e:
@@ -677,7 +677,7 @@ except Exception as e:
 ```json
 {
   "attributes": {
-    "model": "gpt-4",
+    "model": "gpt-5.4",
     "provider": "openai",
     "error": "Rate limit exceeded"
   }

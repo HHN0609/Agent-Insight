@@ -55,7 +55,7 @@ async def test_session_aggregation(fake_uploader):
             end_time="2026-01-01T00:00:01",
             span_type="llm_metrics",
             attributes={
-                "model_name": "gpt-4o-mini",
+                "model_name": "gpt-5.4-mini",
                 "input_tokens": 1000,
                 "output_tokens": 500,
             },
@@ -77,8 +77,8 @@ async def test_session_aggregation(fake_uploader):
     assert s["status"] == "completed"
     assert s["total_spans"] == 2
     assert s["total_tokens"] == 1500
-    # gpt-4o-mini: 1000 * 0.15/1M + 500 * 0.60/1M = 0.00045
-    assert abs(s["total_cost_usd"] - 0.00045) < 1e-9
+    # gpt-5.4-mini: 1000 * 0.75/1M + 500 * 4.50/1M = 0.003
+    assert abs(s["total_cost_usd"] - 0.003) < 1e-9
     assert s["duration_ms"] >= 0
 
     session_sdk.close()
@@ -178,7 +178,7 @@ async def test_close_stops_aggregation(fake_uploader):
             end_time="2026-01-01T00:00:01",
             span_type="llm_metrics",
             attributes={
-                "model_name": "gpt-4o-mini",
+                "model_name": "gpt-5.4-mini",
                 "input_tokens": 100,
                 "output_tokens": 50,
             },
@@ -213,7 +213,7 @@ async def test_concurrent_sessions_no_cross_contamination(fake_uploader):
             end_time="2026-01-01T00:00:01",
             span_type="llm_metrics",
             attributes={
-                "model_name": "gpt-4o",
+                "model_name": "gpt-5.4",
                 "input_tokens": 100,
                 "output_tokens": 200,
             },
@@ -230,7 +230,7 @@ async def test_concurrent_sessions_no_cross_contamination(fake_uploader):
             end_time="2026-01-01T00:00:01",
             span_type="llm_metrics",
             attributes={
-                "model_name": "claude-3-haiku",
+                "model_name": "claude-haiku-4-5",
                 "input_tokens": 10,
                 "output_tokens": 20,
             },

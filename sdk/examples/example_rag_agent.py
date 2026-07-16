@@ -97,7 +97,7 @@ class MockOpenAIClient:
             self.completions = MockOpenAIClient._CompletionsNamespace()
 
     class _CompletionsNamespace:
-        def create(self, messages, model="gpt-4o-mini", stream=False, **kwargs):
+        def create(self, messages, model="gpt-5.4-mini", stream=False, **kwargs):
             # 提取最后一条用户消息作为问题
             user_msg = ""
             for m in messages:
@@ -157,7 +157,7 @@ def create_rag_agent(uploader: AsyncBatchUploader):
             {"role": "user", "content": user_input},
         ]
         response = llm_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.4-mini",
             messages=messages,
             stream=False,
         )

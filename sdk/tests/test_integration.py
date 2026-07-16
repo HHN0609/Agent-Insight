@@ -62,7 +62,7 @@ async def test_end_to_end_session_with_llm_and_tool(fake_uploader):
 
         # 2. LLM 调用
         llm_result = wrapped_client.chat.completions.create(
-            model="gpt-4o-mini",
+            model="gpt-5.4-mini",
             messages=[{"role": "user", "content": "summarize"}],
         )
 
@@ -84,8 +84,8 @@ async def test_end_to_end_session_with_llm_and_tool(fake_uploader):
     assert s["total_spans"] == 4
     # 50 input + 100 output = 150
     assert s["total_tokens"] == 150
-    # gpt-4o-mini: 50 * 0.15/1M + 100 * 0.60/1M = 0.0000675
-    assert abs(s["total_cost_usd"] - (50 * 0.15 / 1_000_000 + 100 * 0.60 / 1_000_000)) < 1e-9
+    # gpt-5.4-mini: 50 * 0.75/1M + 100 * 4.50/1M = 0.0004875
+    assert abs(s["total_cost_usd"] - (50 * 0.75 / 1_000_000 + 100 * 4.50 / 1_000_000)) < 1e-9
 
     interceptor.unwrap()
     session_sdk.close()
@@ -122,7 +122,7 @@ async def test_cross_module_context_propagation(fake_uploader):
     def fetch_data():
         # 3. Tool 内部发起 LLM 调用（应成为 tool span 的子 span）
         return wrapped_client.chat.completions.create(
-            model="gpt-4o",
+            model="gpt-5.4",
             messages=[{"role": "user", "content": "process"}],
         )
 

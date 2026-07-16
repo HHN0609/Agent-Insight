@@ -51,7 +51,7 @@ def simple_agent(user_input: str):
 
     # 步骤2：模拟 LLM 调用（实际应调用 OpenAI API）
     print_log("LLM_CALL", {
-        "model": "gpt-4",
+        "model": "gpt-5.4",
         "prompt": user_input,
         "status": "simulated"
     })
@@ -77,7 +77,7 @@ def simple_agent(user_input: str):
 
         # 步骤4：将 Tool 结果返回给 LLM
         print_log("LLM_CALL", {
-            "model": "gpt-4",
+            "model": "gpt-5.4",
             "prompt": f"计算结果是 {tool_result}，请组织语言回复用户",
             "status": "simulated"
         })

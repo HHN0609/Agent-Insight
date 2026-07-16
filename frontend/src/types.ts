@@ -29,6 +29,7 @@ export interface Trace {
 /** LLM 性能指标 */
 export interface LlmMetric {
   model_name: string
+  provider?: string
   total_requests: number
   avg_prefill_ms: number
   avg_decode_ms: number
@@ -65,6 +66,7 @@ export interface ToolCall {
   duration_ms: number
   status: 'success' | 'error'
   error: string
+  attributes: string | Record<string, unknown>
   created_at: string
 }
 

@@ -138,8 +138,8 @@ function buildWaterfall(traces: Trace[]): WaterfallItem[] {
       const attrs = typeof span.attributes === 'string'
         ? JSON.parse(span.attributes || '{}')
         : span.attributes || {}
-      if (span.name === 'llm_metrics' || attrs.model) type = 'llm'
-      else if (span.name?.includes('tool')) type = 'tool'
+      if (span.name === 'llm_call' || span.name === 'llm_metrics' || attrs.model || attrs.model_name) type = 'llm'
+      else if (span.name?.startsWith('tool:') || span.name?.includes('tool')) type = 'tool'
 
       result.push({
         name: span.name || 'unknown',

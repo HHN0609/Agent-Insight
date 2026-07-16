@@ -112,8 +112,8 @@ function buildTimeline(traces: Trace[]): TimelineItem[] {
         ? JSON.parse(t.attributes || '{}')
         : (t.attributes || {})
 
-    if (t.name === 'llm_metrics' || attrs.model) type = 'llm'
-    else if (t.name?.includes('tool')) type = 'tool'
+    if (t.name === 'llm_call' || t.name === 'llm_metrics' || attrs.model || attrs.model_name) type = 'llm'
+    else if (t.name?.startsWith('tool:') || t.name?.includes('tool')) type = 'tool'
     else if (t.name?.includes('memory')) type = 'memory'
 
     return {

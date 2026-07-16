@@ -73,7 +73,7 @@ AI Agent 可观测性系统——从 SDK 自动埋点、数据采集、消息缓
 ┌─────────────────────────────────────────────────────────────────────┐
 │              ClickHouse（列式存储，高压缩比）                        │
 │                                                                     │
-│  6 张业务表 + 2 个物化视图（自动聚合按模型/按天的统计）              │
+│  5 张业务表 + 2 张聚合表 + 2 个物化视图（自动聚合按模型/按天/按工具）│
 └─────────────────────────────────────────────────────────────────────┘
                                   │
                                   │ JSON REST API
@@ -98,12 +98,13 @@ Python 探针库，非侵入式采集 AI Agent 的运行数据。
 |------|------|------|
 | TraceContext | `context.py` | 用 `contextvars` 管理 trace_id、span_id、parent_span_id，异步安全 |
 | LLMInterceptor | `providers/base.py` | 统一拦截入口，自动扫描匹配的 Adapter |
-| Provider Adapter | `providers/openai_compatible.py` | 拦截 `client.chat.completions.create`，兼容 OpenAI / DeepSeek / vLLM / Ollama / Groq |
+| Provider Adapter | `providers/openai_compatible.py` | 拦截 `client.chat.completions.create`，兼容 OpenAI / DeepSeek / vLLM / Ollama / Groq / Together AI |
 | Provider Adapter | `providers/anthropic.py` | 拦截 `client.messages.create`，适配 Claude 数据结构 |
 | StreamMonitor | `stream_monitor.py` | 流式响应计时，计算 prefill_ms / decode_ms / TPS |
-| ToolSDK | `tool_sdk.py` | `@instrument` 装饰器，自动记录 Tool 调用耗时和输入输出 |
+| ToolSDK | `tool_sdk.py` | 三种装饰器：`@instrument`（通用）/ `@instrument_mcp`（MCP）/ `@instrument_rag`（RAG），自动记录 Tool 调用耗时和输入输出 |
 | TraceAPI | `trace_api.py` | 显式 API：start_trace / start_span / end_span / end_trace |
-| Uploader | `uploader.py` | 有界队列（maxsize=10000），批量上报，3 次指数退避重试 |
+| SessionSDK | `session_sdk.py` | 自动聚合一次会话的总 Span / Token / 成本 / 耗时，结束时上报 session span |
+| Uploader | `uploader.py` | 有界队列（maxsize=10000），批量上报，3 次指数退避重试，支持 observer 回调 |
 
 **数据上报类型（5 种 span_type）：**
 
@@ -158,6 +159,7 @@ Agent 代码
 SDK 采集层
   │  TraceContext 管理上下文
   │  StreamMonitor 计时
+  │  SessionSDK 聚合会话指标
   │  SpanData 序列化
   ▼
 AsyncBatchUploader
@@ -266,10 +268,12 @@ React 前端
 | duration_ms | UInt32 | 总耗时 |
 | status | String | completed / error |
 
-### 物化视图
+### 聚合表与物化视图
 
-- **model_stats_daily**：按模型+日期聚合，SummingMergeTree，自动累加 token 和成本
-- **tool_stats**：按工具+日期聚合，SummingMergeTree，自动累加调用次数、耗时、错误
+- **model_stats_daily**：按模型+日期聚合，`AggregatingMergeTree`，通过 `model_stats_daily_mv` 物化视图写入；avg 用 `avgState` 存储、查询时 `avgMerge` 还原，token 和成本自动累加
+- **tool_stats**：按工具+日期聚合，`AggregatingMergeTree`，通过 `tool_stats_mv` 物化视图写入；avg/max 用 `avgState` / `maxState` 存储，调用次数和错误数自动累加
+
+> avg / max 等非加性聚合不能用 SummingMergeTree（合并时会错误累加），必须使用 AggregatingMergeTree + State/Merge 函数。
 
 ---
 
@@ -339,7 +343,8 @@ agent-observability/
 │       │   ├── openai_compatible.py
 │       │   └── anthropic.py
 │       ├── stream_monitor.py    # 流式计时
-│       ├── tool_sdk.py          # Tool 装饰器
+│       ├── session_sdk.py       # Session 自动聚合
+│       ├── tool_sdk.py          # Tool 装饰器（通用/MCP/RAG）
 │       ├── trace_api.py         # 显式 API
 │       └── uploader.py          # 批量上报器
 ├── backend/                     # FastAPI 服务
@@ -390,7 +395,7 @@ LLM 可观测数据是"写多读少、聚合分析为主"的场景。ClickHouse 
 
 ### Provider Adapter 模式
 
-SDK 不写死某个 LLM 厂商。新增厂商只需实现 `BaseProviderAdapter` 的三个方法：`supports()`、`_wrap_call()`、`extract()`。目前已支持 OpenAI 兼容厂商（OpenAI、DeepSeek、vLLM、Ollama、Groq）和 Anthropic（Claude）。
+SDK 不写死某个 LLM 厂商。新增厂商只需继承 `BaseProviderAdapter` 并实现 `supports()`、`_wrap_call()`、`_unwrap_client()`（`extract()` 有默认实现，OpenAI 兼容格式可直接复用）。目前已支持 OpenAI 兼容厂商（OpenAI、DeepSeek、vLLM、Ollama、Groq、Together AI）和 Anthropic（Claude）。
 
 ### 背压保护
 

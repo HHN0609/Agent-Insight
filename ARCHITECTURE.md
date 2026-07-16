@@ -307,6 +307,17 @@ React 前端
 docker-compose up -d
 ```
 
+### ClickHouse 表结构升级迁移
+
+`docker/clickhouse/init.sql` 仅在容器**首次启动**（数据卷为空）时执行。已有数据的库升级到新版表结构（v0.3.0 → v0.3.1，新增 `llm_metrics.provider` 与 `tool_calls.attributes` 列）需手动执行：
+
+```sql
+ALTER TABLE llm_metrics ADD COLUMN IF NOT EXISTS provider String DEFAULT '' AFTER model_name;
+ALTER TABLE tool_calls  ADD COLUMN IF NOT EXISTS attributes String DEFAULT '{}' AFTER error;
+```
+
+> 两条语句均幂等（`IF NOT EXISTS`），可重复执行。如需重建库，执行 `docker-compose down -v` 清空数据卷后重新 `up`，init.sql 会自动建表。
+
 ---
 
 ## 技术栈

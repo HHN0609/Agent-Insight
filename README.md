@@ -88,7 +88,6 @@ agent-observability/
 │   ├── agent_insight_sdk/
 │   │   ├── __init__.py             # 模块入口 (18 个公开 API)
 │   │   ├── context.py              # TraceContext 上下文管理 (contextvars)
-│   │   ├── interceptor.py          # [兼容保留] 原 OpenAIInterceptor (已别名到 LLMInterceptor)
 │   │   ├── stream_monitor.py       # StreamMonitor 流式响应监控
 │   │   ├── session_sdk.py          # SessionSDK 会话生命周期自动聚合
 │   │   ├── tool_sdk.py             # ToolSDK 装饰器 (通用 / MCP / RAG)

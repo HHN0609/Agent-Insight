@@ -354,7 +354,6 @@ agent-observability/
 │   ├── agent_insight_sdk/
 │   │   ├── __init__.py          # 模块入口（18 个公开 API）
 │   │   ├── context.py           # TraceContext
-│   │   ├── interceptor.py       # [兼容保留] OpenAIInterceptor 别名
 │   │   ├── providers/           # Provider Adapter 模式
 │   │   │   ├── base.py          # BaseProviderAdapter + LLMInterceptor
 │   │   │   ├── openai_compatible.py

@@ -26,7 +26,7 @@ AI Agent 可观测性系统——从 SDK 自动埋点、数据采集、消息缓
 │  LLMInterceptor  ◄── Provider Adapter 模式（多厂商）             │
 │  StreamMonitor  ◄── 流式 prefill / decode / TPS 计算            │
 │  ToolSDK  ◄── @instrument 装饰器，自动记录 Tool 调用             │
-│  TraceAPI  ◄── 显式 start_trace / start_span / end_span         │
+│  SpanAPI  ◄── 显式 start_trace / start_span / end_span         │
 │         │                                                       │
 │         └──────────► AsyncBatchUploader                         │
 │                      Queue(maxsize=10000)                       │
@@ -60,7 +60,7 @@ AI Agent 可观测性系统——从 SDK 自动埋点、数据采集、消息缓
 │                        Kafka Consumer                               │
 │                                                                     │
 │  consume_loop() → 按 span_type 分流                                 │
-│    trace       → agent_traces（MergeTree）                          │
+│    custom      → agent_traces（MergeTree）                          │
 │    llm_metrics → llm_metrics（MergeTree）                           │
 │    prompt      → prompt_logs（MergeTree）                           │
 │    tool_call   → tool_calls（MergeTree）                            │
@@ -102,7 +102,7 @@ Python 探针库，非侵入式采集 AI Agent 的运行数据。
 | Provider Adapter | `providers/anthropic.py` | 拦截 `client.messages.create`，适配 Claude 数据结构 |
 | StreamMonitor | `stream_monitor.py` | 流式响应计时，计算 prefill_ms / decode_ms / TPS |
 | ToolSDK | `tool_sdk.py` | 三种装饰器：`@instrument`（通用）/ `@instrument_mcp`（MCP）/ `@instrument_rag`（RAG），自动记录 Tool 调用耗时和输入输出 |
-| TraceAPI | `trace_api.py` | 显式 API：start_trace / start_span / end_span / end_trace |
+| SpanAPI | `span_api.py` | 显式 API：start_trace / start_span / end_span / end_trace |
 | SessionSDK | `session_sdk.py` | 自动聚合一次会话的总 Span / Token / 成本 / 耗时，结束时上报 session span |
 | Uploader | `uploader.py` | 有界队列（maxsize=10000），批量上报，3 次指数退避重试，支持 observer 回调 |
 
@@ -110,7 +110,7 @@ Python 探针库，非侵入式采集 AI Agent 的运行数据。
 
 | span_type | 说明 | 对应表 |
 |-----------|------|--------|
-| trace | 调用链路 Span | agent_traces |
+| custom | 自定义 Span | agent_traces |
 | llm_metrics | LLM 性能指标 | llm_metrics |
 | prompt | Prompt/Response 记录 | prompt_logs |
 | tool_call | Tool 调用记录 | tool_calls |
@@ -154,7 +154,7 @@ React 18 + TypeScript + Vite，深色主题，7 个页面。
 ```
 Agent 代码
   │
-  │ LLMInterceptor.wrap(client) / @tool_sdk.instrument() / trace_api.start_trace()
+  │ LLMInterceptor.wrap(client) / @tool_sdk.instrument() / span_api.start_trace()
   ▼
 SDK 采集层
   │  TraceContext 管理上下文
@@ -362,7 +362,7 @@ agent-observability/
 │   │   ├── stream_monitor.py    # 流式计时
 │   │   ├── session_sdk.py       # Session 自动聚合
 │   │   ├── tool_sdk.py          # Tool 装饰器（通用/MCP/RAG）
-│   │   ├── trace_api.py         # 显式 API
+│   │   ├── span_api.py         # 显式 API
 │   │   └── uploader.py          # 批量上报器
 │   ├── examples/                # 示例集
 │   │   ├── example_simple_agent.py    # 阶段1：无埋点简单 Agent

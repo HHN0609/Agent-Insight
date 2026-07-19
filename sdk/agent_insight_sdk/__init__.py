@@ -9,7 +9,7 @@ Agent Insight SDK - AI Agent 可观测性探针 SDK
 - StreamMonitor: 流式响应监控 (prefill/decode/TPS)
 - SessionSDK: Session 生命周期自动聚合
 - ToolSDK: Tool 调用自动埋点
-- TraceAPI: start_trace/start_span/end_span/end_trace 显式 API
+- SpanAPI: start_trace/start_span/end_span/end_trace 显式 API
 - AsyncBatchUploader: 异步批量上报
 
 Provider 扩展：继承 BaseProviderAdapter 即可接入新厂商的 LLM SDK
@@ -20,7 +20,7 @@ from .providers import LLMInterceptor, BaseProviderAdapter, LLMCallRecord, regis
 from .stream_monitor import StreamMonitor, MonitoredStream
 from .session_sdk import SessionContext, SessionSDK
 from .tool_sdk import ToolSDK
-from .trace_api import TraceAPI
+from .span_api import SpanAPI
 from .uploader import AsyncBatchUploader, SpanData
 
 # 为保持历史兼容，保留 OpenAIInterceptor 别名
@@ -52,7 +52,7 @@ __all__ = [
     # Tool SDK
     "ToolSDK",
     # Trace API
-    "TraceAPI",
+    "SpanAPI",
     # 上报器
     "AsyncBatchUploader",
     "SpanData",

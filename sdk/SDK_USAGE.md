@@ -207,17 +207,17 @@ asyncio.run(main())
 
 ### 5. 显式 Trace API
 
-使用 `TraceAPI` 手动控制 Trace 生命周期（类似 OpenTelemetry）：
+使用 `SpanAPI` 手动控制 Trace 生命周期（类似 OpenTelemetry）：
 
 ```python
 import asyncio
-from agent_insight_sdk import AsyncBatchUploader, TraceAPI
+from agent_insight_sdk import AsyncBatchUploader, SpanAPI
 
 async def main():
     uploader = AsyncBatchUploader(backend_url="http://localhost:8000")
     await uploader.start()
 
-    api = TraceAPI(uploader)
+    api = SpanAPI(uploader)
 
     # 开始 Trace
     api.start_trace("user_query_123")
@@ -384,32 +384,14 @@ async def weather_query(city: str) -> dict:
 - 异常信息（如有）
 - 自动创建子 span 并关联到当前 trace
 
-### 5. TraceAPI（显式 Trace 控制）
-
-提供类似 OpenTelemetry 的显式 API，适合需要精细控制 Trace 生命周期的场景。
-
-```python
-from agent_insight_sdk import TraceAPI
-
-api = TraceAPI(uploader)
-
-# 开始 Trace（创建根 span）
-ctx = api.start_trace("my_task")
-
-# 开始子 Span
-span_ctx = api.start_span("step_1", attributes={"key": "value"})
-# ... 执行操作 ...
-api.end_span(span_ctx, attributes={"result": "ok"})
-
-# 结束 Trace
-api.end_trace(attributes={"status": "completed"})
-```
+### SpanAPI
 
 | 方法 | 说明 |
 |------|------|
+| `__init__(uploader)` | 初始化 Span API |
 | `start_trace(name, trace_id="")` | 开始新 Trace，返回 TraceContext |
 | `start_span(name, attributes=None)` | 开始子 Span（自动取当前 context 为父） |
-| `end_span(ctx=None, attributes=None, span_type="trace")` | 结束 Span 并上报 |
+| `end_span(ctx=None, attributes=None, span_type="custom")` | 结束 Span 并上报 |
 | `end_trace(attributes=None)` | 结束根 Span 并清除上下文 |
 
 ### 6. AsyncBatchUploader（异步批量上报）
@@ -457,7 +439,7 @@ class SpanData:
     name: str                  # span 名称
     start_time: str            # ISO 格式时间戳
     end_time: str              # ISO 格式时间戳
-    span_type: str             # "trace" | "llm_metrics" | "prompt" | "tool_call" | "session"
+    span_type: str             # "custom" | "llm_metrics" | "prompt" | "tool_call" | "session"
     attributes: Dict[str, Any] # 附加属性
 
     # prompt 类型专属字段
@@ -523,7 +505,7 @@ class StreamMetrics:
     tps: float           # 每秒 token 吞吐量
 ```
 
-### Trace Span（链路追踪）
+### Custom Span（自定义调用链路）
 
 ```json
 {
@@ -533,7 +515,7 @@ class StreamMetrics:
   "name": "llm_call",
   "start_time": "2026-06-28T10:00:00.000",
   "end_time": "2026-06-28T10:00:02.500",
-  "span_type": "trace",
+  "span_type": "custom",
   "attributes": {
     "model": "gpt-5.4",
     "provider": "openai",
@@ -795,14 +777,14 @@ register_adapter(MyCustomAdapter())
 | `wrap(client)` | 自动识别 Provider 并返回拦截后的客户端 |
 | `unwrap()` | 恢复原始客户端 |
 
-### TraceAPI
+### SpanAPI
 
 | 方法 | 说明 |
 |------|------|
-| `__init__(uploader)` | 初始化 Trace API |
+| `__init__(uploader)` | 初始化 Span API |
 | `start_trace(name, trace_id="")` | 开始新 Trace |
 | `start_span(name, attributes=None)` | 开始子 Span |
-| `end_span(ctx=None, attributes=None, span_type="trace")` | 结束 Span 并上报 |
+| `end_span(ctx=None, attributes=None, span_type="custom")` | 结束 Span 并上报 |
 | `end_trace(attributes=None)` | 结束 Trace 并清除上下文 |
 
 ### ToolSDK

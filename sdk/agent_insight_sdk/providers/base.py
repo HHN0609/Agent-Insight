@@ -230,7 +230,7 @@ class LLMInterceptor:
             name=ctx.name,
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            span_type="trace",
+            span_type="custom",
             attributes={
                 "model": record.model,
                 "provider": record.provider,

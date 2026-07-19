@@ -7,7 +7,7 @@ SpanData.to_dict() 序列化单元测试
 from agent_insight_sdk.uploader import SpanData
 
 
-def test_trace_span_dict():
+def test_custom_span_dict():
     span = SpanData(
         trace_id="t1",
         span_id="s1",
@@ -15,7 +15,7 @@ def test_trace_span_dict():
         name="root",
         start_time="2026-01-01T00:00:00",
         end_time="2026-01-01T00:00:01",
-        span_type="trace",
+        span_type="custom",
         attributes={"key": "value"},
     )
     d = span.to_dict()
@@ -24,9 +24,9 @@ def test_trace_span_dict():
     assert d["span_id"] == "s1"
     assert d["parent_span_id"] == "p1"
     assert d["name"] == "root"
-    assert d["span_type"] == "trace"
+    assert d["span_type"] == "custom"
     assert d["attributes"] == {"key": "value"}
-    # trace 类型不应包含 tool/session/prompt 专属字段
+    # custom 类型不应包含 tool/session/prompt 专属字段
     assert "tool_name" not in d
     assert "session_id" not in d
     assert "prompt" not in d
@@ -130,7 +130,7 @@ def test_span_data_attributes_default_to_dict():
     span = SpanData(
         trace_id="t1",
         span_id="s1",
-        span_type="trace",
+        span_type="custom",
     )
     assert span.attributes == {}
     assert span.to_dict()["attributes"] == {}
@@ -142,6 +142,6 @@ def test_span_data_parent_span_id_empty_when_none():
         trace_id="t1",
         span_id="s1",
         parent_span_id=None,
-        span_type="trace",
+        span_type="custom",
     )
     assert span.to_dict()["parent_span_id"] == ""

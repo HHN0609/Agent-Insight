@@ -4,8 +4,8 @@
   - 健康检查
   - 5 种 span_type 的批量上报成功路径
   - 按 span_type 校验必填字段（缺失 → 400）
-  - 缺省 span_type 回退为 trace
-  - 未知 span_type 回退为 trace 的必填规则
+  - 缺省 span_type 回退为 custom
+  - 未知 span_type 回退为 custom 的必填规则
   - 非对象元素校验
   - 空数组校验
   - Kafka 投递失败 → 500
@@ -32,14 +32,14 @@ async def test_health_check(api_client):
 # ----------------------------- validate_item 单元测试 -----------------------------
 
 
-def test_validate_item_accepts_valid_trace():
+def test_validate_item_accepts_valid_custom():
     item = {
         "trace_id": "t1",
         "span_id": "s1",
         "name": "root",
         "start_time": "2026-07-16T00:00:00",
         "end_time": "2026-07-16T00:00:01",
-        "span_type": "trace",
+        "span_type": "custom",
     }
     # 不抛异常即通过
     validate_item(item)
@@ -58,12 +58,12 @@ def test_validate_item_rejects_non_dict():
     assert "JSON object" in exc.value.detail
 
 
-def test_validate_item_missing_fields_for_trace():
+def test_validate_item_missing_fields_for_custom():
     with pytest.raises(HTTPException) as exc:
-        validate_item({"span_id": "s1", "span_type": "trace"})  # 缺 trace_id/name/时间
+        validate_item({"span_id": "s1", "span_type": "custom"})  # 缺 trace_id/name/时间
     assert exc.value.status_code == 400
     detail = exc.value.detail
-    assert "trace" in detail
+    assert "custom" in detail
     assert "trace_id" in detail
 
 
@@ -82,20 +82,20 @@ def test_validate_item_missing_fields_for_llm_metrics():
     assert "span_id" in exc.value.detail
 
 
-def test_validate_item_default_span_type_is_trace():
-    """未提供 span_type 时按 trace 校验必填字段"""
+def test_validate_item_default_span_type_is_custom():
+    """未提供 span_type 时按 custom 校验必填字段"""
     with pytest.raises(HTTPException) as exc:
         validate_item({"span_id": "s1", "name": "n"})  # 缺 trace_id/时间，无 span_type
     assert exc.value.status_code == 400
-    assert "trace" in exc.value.detail
+    assert "custom" in exc.value.detail
 
 
-def test_validate_item_unknown_span_type_falls_back_to_trace():
-    """未知 span_type 走 trace 的必填规则"""
+def test_validate_item_unknown_span_type_falls_back_to_custom():
+    """未知 span_type 走 custom 的必填规则"""
     with pytest.raises(HTTPException) as exc:
         validate_item({"span_type": "weird-type", "span_id": "s1"})
     assert exc.value.status_code == 400
-    # 回退到 trace，应要求 trace_id
+    # 回退到 custom，应要求 trace_id
     assert "trace_id" in exc.value.detail
 
 
@@ -112,7 +112,7 @@ def _full_batch():
             "name": "root",
             "start_time": "2026-07-16T10:00:00.000",
             "end_time": "2026-07-16T10:00:01.000",
-            "span_type": "trace",
+            "span_type": "custom",
             "attributes": {"model": "gpt-5.4"},
         },
         {
@@ -183,7 +183,7 @@ async def test_collect_accepts_full_batch(api_client):
     sent = mocked.await_args.args[0]
     assert len(sent) == 5
     assert {item["span_type"] for item in sent} == {
-        "trace", "llm_metrics", "prompt", "tool_call", "session",
+        "custom", "llm_metrics", "prompt", "tool_call", "session",
     }
 
 
@@ -213,7 +213,7 @@ async def test_collect_rejects_missing_required_field(api_client):
 
 @pytest.mark.asyncio
 async def test_collect_default_span_type_accepted(api_client):
-    """不传 span_type 但满足 trace 必填字段 → 202"""
+    """不传 span_type 但满足 custom 必填字段 → 202"""
     batch = [
         {
             "trace_id": "trace-x",

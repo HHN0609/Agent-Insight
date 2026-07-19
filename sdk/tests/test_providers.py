@@ -51,12 +51,12 @@ async def test_openai_compatible_interceptor_non_stream(fake_uploader):
 
     assert result is response
 
-    trace_spans = [s for s in fake_uploader.spans if s["span_type"] == "trace"]
+    custom_spans = [s for s in fake_uploader.spans if s["span_type"] == "custom"]
     metrics_spans = [s for s in fake_uploader.spans if s["span_type"] == "llm_metrics"]
     prompt_spans = [s for s in fake_uploader.spans if s["span_type"] == "prompt"]
 
-    assert len(trace_spans) == 1
-    assert trace_spans[0]["attributes"]["model"] == "gpt-5.4-mini"
+    assert len(custom_spans) == 1
+    assert custom_spans[0]["attributes"]["model"] == "gpt-5.4-mini"
 
     assert len(metrics_spans) == 1
     attrs = metrics_spans[0]["attributes"]
@@ -146,9 +146,9 @@ async def test_openai_stream_interceptor(fake_uploader):
 
     assert content == "hello world"
 
-    trace_spans = [s for s in fake_uploader.spans if s["span_type"] == "trace"]
-    assert len(trace_spans) == 1
-    assert trace_spans[0]["attributes"]["stream"] is True
+    custom_spans = [s for s in fake_uploader.spans if s["span_type"] == "custom"]
+    assert len(custom_spans) == 1
+    assert custom_spans[0]["attributes"]["stream"] is True
 
     metrics_spans = [s for s in fake_uploader.spans if s["span_type"] == "llm_metrics"]
     assert len(metrics_spans) == 1

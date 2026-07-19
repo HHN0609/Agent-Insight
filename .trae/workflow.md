@@ -26,7 +26,7 @@
 - [ ] `backend/app/api/collect.py`（`REQUIRED_FIELDS`）
 - [ ] `backend/app/kafka/consumer.py`（`PARSE_MAP` + `consume_loop` 分流）
 - [ ] `docker/clickhouse/init.sql`（`CREATE TABLE`）
-- [ ] 未知 span_type 仍回退 `trace`（保持向前兼容）
+- [ ] 未知 span_type 仍回退 `custom`（保持向前兼容）
 - [ ] 对应测试：`test_collect.py` 校验用例 + `test_consumer.py` 分发用例
 
 ### 改动 ClickHouse 表结构（加列等）
@@ -70,7 +70,7 @@ docker compose up -d clickhouse && docker logs agent-insight-clickhouse 2>&1 | g
 ## 提交信息风格
 
 - 跟随仓库既有 commit 风格；不确定时先 `git log --oneline -5`。
-- 描述"为什么"而非仅"做了什么"，例如 `fix(consumer): 兜底未知 span_type 回退 trace 避免丢数据` 优于 `update consumer.py`。
+- 描述"为什么"而非仅"做了什么"，例如 `fix(consumer): 兜底未知 span_type 回退 custom 避免丢数据` 优于 `update consumer.py`。
 - 跨模块改动在 commit body 列出同步的文件与原因。
 
 ## 何时需要与维护者确认

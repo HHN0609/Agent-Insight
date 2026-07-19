@@ -5,7 +5,7 @@ Agent-Insight SDK 完整演示 — 多厂商 LLM + Tool + Trace API
   1. 对接真实 LLM API（自动识别 provider，非 mock）
   2. OpenAI / Anthropic / DeepSeek / Ollama 多厂商示例
   3. ToolSDK 装饰器自动埋点
-  4. TraceAPI 显式链路控制
+  4. SpanAPI 显式链路控制
   5. SessionSDK 自动聚合 Session 生命周期
 
 用法：
@@ -44,7 +44,7 @@ from agent_insight_sdk import (
     StreamMonitor,
     SessionSDK,
     ToolSDK,
-    TraceAPI,
+    SpanAPI,
     AsyncBatchUploader,
     SpanData,
     set_current_context,
@@ -241,35 +241,35 @@ async def demo_tool_sdk():
 
 
 # ===================================================================
-# Demo 5: TraceAPI 显式链路控制
+# Demo 5: SpanAPI 显式链路控制
 # ===================================================================
 
-async def demo_trace_api():
-    """演示5：TraceAPI 显式 startTrace/startSpan/endSpan"""
+async def demo_span_api():
+    """演示5：SpanAPI 显式 startTrace/startSpan/endSpan"""
     print("\n" + "=" * 60)
-    print("演示5: TraceAPI 显式链路控制")
+    print("演示5: SpanAPI 显式链路控制")
     print("=" * 60)
 
     uploader = AsyncBatchUploader(backend_url=BACKEND_URL, batch_size=5)
     await uploader.start()
 
-    trace = TraceAPI(uploader)
+    span_api = SpanAPI(uploader)
 
     # 开始一个完整 Trace
-    ctx = trace.start_trace(name="agent_complete_flow")
+    ctx = span_api.start_trace(name="agent_complete_flow")
 
     # LLM 调用 Span
-    llm_span = trace.start_span(name="llm_reasoning", attributes={"model": "gpt-5.4"})
+    llm_span = span_api.start_span(name="llm_reasoning", attributes={"model": "gpt-5.4"})
     time.sleep(0.3)  # 模拟 LLM 调用
-    trace.end_span(llm_span, span_type="trace")
+    span_api.end_span(llm_span, span_type="custom")
 
     # Tool 调用 Span
-    tool_span = trace.start_span(name="tool_calculator", attributes={"tool": "calculator"})
+    tool_span = span_api.start_span(name="tool_calculator", attributes={"tool": "calculator"})
     time.sleep(0.1)  # 模拟 Tool 调用
-    trace.end_span(tool_span, span_type="trace")
+    span_api.end_span(tool_span, span_type="custom")
 
     # 结束 Trace
-    trace.end_span(ctx, span_type="trace")
+    span_api.end_span(ctx, span_type="custom")
 
     clear_current_context()
     await asyncio.sleep(0.5)
@@ -291,7 +291,7 @@ async def demo_session_lifecycle():
     await uploader.start()
 
     session_sdk = SessionSDK(uploader)
-    trace = TraceAPI(uploader)
+    span_api = SpanAPI(uploader)
 
     # 显式开始 Session
     sess = session_sdk.start_session(
@@ -302,15 +302,15 @@ async def demo_session_lifecycle():
 
     # 模拟 3 轮对话
     for round_num in range(3):
-        span = trace.start_span(
+        span = span_api.start_span(
             name=f"round_{round_num + 1}",
             attributes={"round": round_num + 1, "session_id": sess.session_id},
         )
         time.sleep(0.15)
-        trace.end_span(span)
+        span_api.end_span(span)
 
     # 再模拟一次 LLM 调用，验证 token / 成本自动聚合
-    llm_span = trace.start_span(name="llm_summary", attributes={"model": "gpt-5.4-mini"})
+    llm_span = span_api.start_span(name="llm_summary", attributes={"model": "gpt-5.4-mini"})
     metrics_span = SpanData(
         trace_id=sess.session_id,
         span_id=llm_span.span_id,
@@ -329,7 +329,7 @@ async def demo_session_lifecycle():
         },
     )
     await uploader.submit(metrics_span)
-    trace.end_span(llm_span)
+    span_api.end_span(llm_span)
 
     # 结束 Session，自动聚合 span 数 / token / 成本 / 耗时
     session_sdk.end_session(
@@ -364,8 +364,8 @@ async def main():
     # 2. ToolSDK
     await demo_tool_sdk()
 
-    # 3. TraceAPI
-    await demo_trace_api()
+    # 3. SpanAPI
+    await demo_span_api()
 
     # 4. Session
     await demo_session_lifecycle()

@@ -9,7 +9,7 @@ from datetime import datetime
 
 import pytest
 
-from agent_insight_sdk import SessionSDK, TraceAPI, clear_current_context, get_current_context
+from agent_insight_sdk import SessionSDK, SpanAPI, clear_current_context, get_current_context
 from agent_insight_sdk.context import TraceContext
 from agent_insight_sdk.session_sdk import SessionContext
 from agent_insight_sdk.uploader import SpanData

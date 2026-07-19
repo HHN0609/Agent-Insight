@@ -31,12 +31,12 @@ pip install pytest pytest-asyncio httpx
 | `test_context.py` | 4 | `context.TraceContext` | trace_id/span_id 生成、父子继承、contextvars 跨 asyncio Task 隔离 |
 | `test_stream_monitor.py` | 7 | `stream_monitor.StreamMonitor` / `MonitoredStream` | 指标计算、usage 提取、同步/异步迭代、空流、无 start_time |
 | `test_tool_sdk.py` | 7 | `tool_sdk.ToolSDK` | 同步/异步 instrument、错误捕获、默认名称、无父上下文、kwargs 序列化、不可序列化 fallback |
-| `test_trace_api.py` | 6 | `trace_api.TraceAPI` | 生命周期、嵌套 span、空上下文安全、end_trace 无 start、自定义 trace_id、end_span 恢复父上下文 |
+| `test_span_api.py` | 6 | `span_api.SpanAPI` | 生命周期、嵌套 span、空上下文安全、end_trace 无 start、自定义 trace_id、end_span 恢复父上下文 |
 | `test_uploader.py` | 6 | `uploader.AsyncBatchUploader` | submit+observer、批量 flush、重试退避（mock sleep）、移除 observer、队列满背压、observer 异常隔离 |
 | `test_providers.py` | 9 | `providers.base.LLMInterceptor` + OpenAI/Anthropic Adapter | 非流式/流式拦截、异常上报、unwrap 恢复、Anthropic 流式/多模态 prompt、自定义 adapter |
 | `test_session_sdk.py` | 8 | `session_sdk.SessionSDK` | 上下文设置、聚合（spans/tokens/cost）、context manager、自定义定价、未知模型 cost=0、未知 session_id 安全、close 停止聚合、并发 session 不串扰 |
-| `test_span_data.py` | 6 | `uploader.SpanData.to_dict()` | 各 span_type 字段映射（trace/prompt/tool_call/session）、默认值、parent_span_id 空字符串 |
-| `test_integration.py` | 3 | 多模块协作 | 端到端 Session+LLM+Tool 聚合、跨模块 parent_span_id 链路、Session+TraceAPI+ToolSDK 混合 |
+| `test_span_data.py` | 6 | `uploader.SpanData.to_dict()` | 各 span_type 字段映射（custom/prompt/tool_call/session）、默认值、parent_span_id 空字符串 |
+| `test_integration.py` | 3 | 多模块协作 | 端到端 Session+LLM+Tool 聚合、跨模块 parent_span_id 链路、Session+SpanAPI+ToolSDK 混合 |
 | `test_agent_simulation.py` | — | 全链路连通性 | **非 pytest 用例**，是手动运行的端到端脚本，需后端在线，见下方说明 |
 
 **合计：56 个 pytest 用例**
@@ -78,9 +78,9 @@ async def test_xxx(fake_uploader):
 
 ## 已知注意事项
 
-1. **异步时序**：`ToolSDK`、`TraceAPI`、`SessionSDK` 内部用 `loop.create_task` 提交 span，测试中需要 `await asyncio.sleep(0.05~0.1)` 等待任务完成后再断言。
+1. **异步时序**：`ToolSDK`、`SpanAPI`、`SessionSDK` 内部用 `loop.create_task` 提交 span，测试中需要 `await asyncio.sleep(0.05~0.1)` 等待任务完成后再断言。
 
-2. **TraceAPI 上下文清理**：`TraceAPI.end_span()` 会清空全局 contextvars 上下文。如果在 `SessionSDK.session()` 内部使用 `TraceAPI`，需要在 `end_span` 后手动恢复 session 上下文（见 `test_session_with_trace_api_and_tool`）。
+2. **SpanAPI 上下文清理**：`SpanAPI.end_span()` 会清空全局 contextvars 上下文。如果在 `SessionSDK.session()` 内部使用 `SpanAPI`，需要在 `end_span` 后手动恢复 session 上下文（见 `test_session_with_trace_api_and_tool`）。
 
 3. **DeprecationWarning**：源码中使用 `datetime.utcnow()`（36 处），Python 3.12+ 会产生 deprecation warning，不影响功能。后续可统一替换为 `datetime.now(datetime.UTC)`。
 

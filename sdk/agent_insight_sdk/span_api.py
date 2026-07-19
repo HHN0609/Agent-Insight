@@ -1,10 +1,10 @@
 """
-Trace API 模块 - 提供 start_trace/start_span/end_span/end_trace 等显式 API
+Span API 模块 - 提供 start_trace/start_span/end_span/end_trace 等显式 API
 
 对外提供类似 OpenTelemetry 的 API，业务代码可手动控制 Trace 生命周期。
 
 用法：
-    api = TraceAPI(uploader)
+    api = SpanAPI(uploader)
 
     # 开始 Trace
     api.start_trace("user_query_123")
@@ -27,8 +27,8 @@ from .context import TraceContext, get_current_context, set_current_context, cle
 from .uploader import AsyncBatchUploader, SpanData
 
 
-class TraceAPI:
-    """显式 Trace API"""
+class SpanAPI:
+    """显式 Span API，用于手动创建和管理 Trace/Span"""
 
     def __init__(self, uploader: AsyncBatchUploader):
         self._uploader = uploader
@@ -39,10 +39,10 @@ class TraceAPI:
 
     def start_trace(self, name: str, trace_id: str = "") -> TraceContext:
         """
-        开始一个新的 Trace
+        开始一个新的 Trace（创建根 span）
 
         用法：
-            api = TraceAPI(uploader)
+            api = SpanAPI(uploader)
             ctx = api.start_trace("user_query_123")
         """
         ctx = TraceContext(name=name, trace_id=trace_id or None)
@@ -73,7 +73,7 @@ class TraceAPI:
         self,
         ctx: Optional[TraceContext] = None,
         attributes: Dict[str, Any] = None,
-        span_type: str = "trace",
+        span_type: str = "custom",
     ) -> None:
         """
         结束当前 Span 并上报
@@ -122,7 +122,7 @@ class TraceAPI:
             return
 
         root = self._context_stack[0]
-        self.end_span(root, attributes, span_type="trace")
+        self.end_span(root, attributes, span_type="custom")
         self._context_stack.clear()
         clear_current_context()
 

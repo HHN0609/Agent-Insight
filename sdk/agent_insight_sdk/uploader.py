@@ -17,7 +17,7 @@ class SpanData:
     """Span 数据结构
 
     span_type 取值：
-      - "trace"       → agent_traces 表
+      - "custom"      → agent_traces 表
       - "llm_metrics" → llm_metrics 表
       - "prompt"      → prompt_logs 表
       - "tool_call"   → tool_calls 表
@@ -29,7 +29,7 @@ class SpanData:
     name: str = ""
     start_time: str = ""
     end_time: str = ""
-    span_type: str = "trace"
+    span_type: str = "custom"
     attributes: Dict[str, Any] = None
 
     # prompt 类型专属字段

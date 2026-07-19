@@ -65,7 +65,7 @@ sdk/  ──HTTP POST──▶  backend/  ──produce──▶  Kafka  ──c
 | `providers/openai_compatible.py` / `anthropic.py` | 各厂商 Adapter |
 | `stream_monitor.py` | 流式响应 prefill_ms / decode_ms / TPS 计算 |
 | `tool_sdk.py` | `@instrument` / `@instrument_mcp` / `@instrument_rag` 装饰器 |
-| `trace_api.py` | 显式 `start_trace` / `start_span` / `end_span` |
+| `span_api.py` | 显式 `start_trace` / `start_span` / `end_span` |
 | `session_sdk.py` | 会话生命周期自动聚合 + **Token 定价表** |
 | `uploader.py` | `AsyncBatchUploader` 有界队列 + `SpanData`（5 种 span_type） |
 

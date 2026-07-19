@@ -2,7 +2,7 @@
 
 Consumer 把原始 item 按 span_type 分流解析为 ClickHouse 行；其中 llm_metrics
 在解析阶段会调用 calculate_cost 估算 USD 成本。这里覆盖：
-  - parse_item 分发（含未知 span_type 回退 trace）
+  - parse_item 分发（含未知 span_type 回退 custom）
   - 5 种 parse_* 的字段映射与默认值
   - llm_metrics 顶层 / attributes 回退读取
   - calculate_cost：精确匹配、长 key 优先的前缀匹配、大小写不敏感、兜底价、零 token
@@ -23,7 +23,7 @@ from app.kafka.consumer import (
     parse_prompt,
     parse_session,
     parse_tool_call,
-    parse_trace,
+    parse_custom,
 )
 
 
@@ -33,7 +33,7 @@ from app.kafka.consumer import (
 @pytest.mark.parametrize(
     "span_type, expected_fn",
     [
-        ("trace", parse_trace),
+        ("custom", parse_custom),
         ("llm_metrics", parse_llm_metrics),
         ("prompt", parse_prompt),
         ("tool_call", parse_tool_call),
@@ -57,7 +57,7 @@ def test_parse_item_dispatches_by_span_type(span_type, expected_fn):
     assert result["trace_id"] == "t"
 
 
-def test_parse_item_unknown_span_type_falls_back_to_trace():
+def test_parse_item_unknown_span_type_falls_back_to_custom():
     item = {
         "trace_id": "t",
         "span_id": "s",
@@ -67,23 +67,23 @@ def test_parse_item_unknown_span_type_falls_back_to_trace():
         "end_time": "2026-07-16T00:00:01",
     }
     result = parse_item(item)
-    # 回退到 trace 解析，应包含 trace 专属字段
+    # 回退到 custom 解析，应包含 custom 专属字段
     assert result["name"] == "n"
-    assert "attributes" in result  # trace 列
+    assert "attributes" in result  # custom 列
 
 
-def test_parse_item_default_span_type_is_trace():
+def test_parse_item_default_span_type_is_custom():
     item = {"trace_id": "t", "span_id": "s"}
     result = parse_item(item)
     assert result["trace_id"] == "t"
     assert result["span_id"] == "s"
-    assert "attributes" in result  # trace 解析产物
+    assert "attributes" in result  # custom 解析产物
 
 
-# ----------------------------- parse_trace -----------------------------
+# ----------------------------- parse_custom -----------------------------
 
 
-def test_parse_trace_serializes_attributes_and_defaults():
+def test_parse_custom_serializes_attributes_and_defaults():
     item = {
         "trace_id": "t1",
         "span_id": "s1",
@@ -92,7 +92,7 @@ def test_parse_trace_serializes_attributes_and_defaults():
         "end_time": "2026-07-16T00:00:01",
         "attributes": {"model": "gpt-5.4", "nested": {"a": 1}},
     }
-    row = parse_trace(item)
+    row = parse_custom(item)
     assert row == {
         "trace_id": "t1",
         "span_id": "s1",
@@ -104,8 +104,8 @@ def test_parse_trace_serializes_attributes_and_defaults():
     }
 
 
-def test_parse_trace_missing_optional_fields_uses_empty_defaults():
-    row = parse_trace({"trace_id": "t", "span_id": "s"})
+def test_parse_custom_missing_optional_fields_uses_empty_defaults():
+    row = parse_custom({"trace_id": "t", "span_id": "s"})
     assert row["parent_span_id"] == ""
     assert row["name"] == ""
     assert row["start_time"] == ""

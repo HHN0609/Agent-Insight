@@ -12,7 +12,7 @@
 
 | span_type | ClickHouse 表 | 说明 |
 |-----------|---------------|------|
-| `trace` | `agent_traces` | 链路 Span |
+| `custom` | `agent_traces` | 链路 Span |
 | `llm_metrics` | `llm_metrics` | LLM 性能指标 |
 | `prompt` | `prompt_logs` | Prompt/Response |
 | `tool_call` | `tool_calls` | Tool 调用 |
@@ -25,7 +25,7 @@
 4. `docker/clickhouse/init.sql` — 对应的 `CREATE TABLE`
 
 **违反后果**：新增类型只改了一端，会导致数据被错误分流、写入失败、或校验拒绝合法数据。
-**默认行为**：未知 `span_type` 在 collector 与 consumer 中都**回退到 `trace`** 的规则，不要改成"拒绝"否则会破坏向前兼容。
+**默认行为**：未知 `span_type` 在 collector 与 consumer 中都**回退到 `custom`** 的规则，不要改成"拒绝"否则会破坏向前兼容。
 
 ---
 

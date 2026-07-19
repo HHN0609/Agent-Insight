@@ -55,7 +55,7 @@ backend/
 
 | span_type      | ClickHouse 表   | 说明                                   |
 |----------------|-----------------|----------------------------------------|
-| `trace`        | `agent_traces`  | 链路追踪 span（含 `attributes` 扩展属性） |
+| `custom`       | `agent_traces`  | 链路追踪 span（含 `attributes` 扩展属性） |
 | `llm_metrics`  | `llm_metrics`   | LLM 性能指标（prefill/decode/TPS/`provider`） |
 | `prompt`       | `prompt_logs`   | Prompt/Response 日志                   |
 | `tool_call`    | `tool_calls`    | Tool 调用记录（含 `attributes`：MCP/RAG 元数据） |

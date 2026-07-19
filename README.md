@@ -19,7 +19,7 @@
 │  │  - LLMInterceptor 多厂商调用拦截                                │  │
 │  │  - StreamMonitor 流式响应监控 (prefill/decode/TPS)               │  │
 │  │  - ToolSDK 装饰器自动埋点                                        │  │
-│  │  - TraceAPI 显式 startTrace/startSpan/endSpan                    │  │
+│  │  - SpanAPI 显式 startTrace/startSpan/endSpan                    │  │
 │  │  - AsyncBatchUploader 异步批量上报                               │  │
 │  └────────────────────────┬─────────────────────────────────────────┘  │
 └───────────────────────────┼────────────────────────────────────────────┘
@@ -92,7 +92,7 @@ agent-observability/
 │   │   ├── stream_monitor.py       # StreamMonitor 流式响应监控
 │   │   ├── session_sdk.py          # SessionSDK 会话生命周期自动聚合
 │   │   ├── tool_sdk.py             # ToolSDK 装饰器 (通用 / MCP / RAG)
-│   │   ├── trace_api.py            # TraceAPI 显式 startTrace/startSpan/endSpan
+│   │   ├── span_api.py            # SpanAPI 显式 startTrace/startSpan/endSpan
 │   │   ├── uploader.py             # AsyncBatchUploader + SpanData（5 种 span_type）
 │   │   └── providers/              # Provider Adapter 模式（多厂商 LLM 拦截）
 │   │       ├── base.py             # BaseProviderAdapter + LLMInterceptor + LLMCallRecord
@@ -112,7 +112,7 @@ agent-observability/
 │   │   ├── test_session_sdk.py     # SessionSDK 单测
 │   │   ├── test_stream_monitor.py  # StreamMonitor 单测
 │   │   ├── test_tool_sdk.py        # ToolSDK 单测
-│   │   ├── test_trace_api.py       # TraceAPI 单测
+│   │   ├── test_span_api.py       # SpanAPI 单测
 │   │   ├── test_uploader.py        # Uploader 单测
 │   │   ├── test_span_data.py       # SpanData 序列化单测
 │   │   ├── test_integration.py     # 集成测试
@@ -280,7 +280,7 @@ pip install -e .
 #### 2.1 验证安装
 
 ```bash
-python -c "from agent_insight_sdk import TraceContext, LLMInterceptor, ToolSDK, TraceAPI, SessionSDK, AsyncBatchUploader; print('SDK OK')"
+python -c "from agent_insight_sdk import TraceContext, LLMInterceptor, ToolSDK, SpanAPI, SessionSDK, AsyncBatchUploader; print('SDK OK')"
 ```
 
 预期输出：`SDK OK`
@@ -420,7 +420,7 @@ python examples/example_sdk_demo.py
 
 1. 演示 `LLMInterceptor` 多厂商 LLM 调用自动拦截（OpenAI / Anthropic / DeepSeek / Ollama）
 2. 演示 `ToolSDK` 装饰器自动埋点 Tool 调用
-3. 演示 `TraceAPI` 显式 startTrace/startSpan/endSpan
+3. 演示 `SpanAPI` 显式 startTrace/startSpan/endSpan
 4. 演示 `SessionSDK` 自动聚合 Session 生命周期
 
 > 未配置 API Key 时自动回退到模拟模式，无需真实 Key 即可观察埋点行为。
@@ -487,7 +487,7 @@ docker-compose down
 
 | 方法 | 路径 | 说明 |
 |------|------|------|
-| `POST` | `/api/v1/collect` | 接收 SDK 上报，支持 trace / llm_metrics / prompt / tool_call / session 五种 span_type，投递 Kafka 后立即返回 202 |
+| `POST` | `/api/v1/collect` | 接收 SDK 上报，支持 custom / llm_metrics / prompt / tool_call / session 五种 span_type，投递 Kafka 后立即返回 202 |
 
 ### 数据查询
 
@@ -524,7 +524,7 @@ from agent_insight_sdk import (
     LLMInterceptor,        # 多厂商 LLM 统一拦截（自动识别 provider）
     StreamMonitor,         # 流式响应监控
     ToolSDK,               # Tool 自动埋点（通用 / MCP / RAG）
-    TraceAPI,              # 显式 Trace API
+    SpanAPI,              # 显式 Span API
     SessionSDK,            # Session 生命周期自动聚合
     AsyncBatchUploader,    # 异步批量上报
 )
@@ -573,7 +573,7 @@ response = client.chat.completions.create(
 | `LLMInterceptor` | 多厂商 LLM 统一拦截器，`wrap(client)` 自动识别 Provider 并拦截所有 LLM 调用 |
 | `StreamMonitor` | 监控流式响应的 chunk，精确计算 prefill_ms（首字耗时）和 decode_ms（生成耗时） |
 | `ToolSDK` | 三种装饰器：`@instrument()`（通用）/ `@instrument_mcp()`（MCP 协议）/ `@instrument_rag()`（RAG 检索），自动记录 Tool 输入/输出/耗时/异常 |
-| `TraceAPI` | 显式 `startTrace()` / `startSpan()` / `endSpan()` API，适用于手动控制链路场景 |
+| `SpanAPI` | 显式 `startTrace()` / `startSpan()` / `endSpan()` API，适用于手动控制链路场景 |
 | `SessionSDK` | 自动聚合一次会话的总 Span 数 / 总 Token 数 / 总成本 / 总耗时，结束时上报 session span |
 | `AsyncBatchUploader` | 有界队列（10000）+ 后台任务，每 500ms 或满 20 条自动批量上报，3 次指数退避重试 |
 
@@ -614,7 +614,7 @@ response = client.chat.completions.create(
 - 基于 Provider Adapter 模式，新增厂商只需继承 `BaseProviderAdapter` 并实现 `supports()` / `_wrap_call()` / `_unwrap_client()`
 - `StreamMonitor` — 流式响应监控，精确计算 prefill_ms / decode_ms / TPS
 - `ToolSDK` — 三种装饰器：`@instrument()`（通用）/ `@instrument_mcp()`（MCP）/ `@instrument_rag()`（RAG），自动记录 Tool 输入/输出/异常/耗时
-- `TraceAPI` — 显式 `startTrace()` / `startSpan()` / `endSpan()` API
+- `SpanAPI` — 显式 `startTrace()` / `startSpan()` / `endSpan()` API
 - `SessionSDK` — 自动聚合一次会话的总 Span / Token / 成本 / 耗时
 - `AsyncBatchUploader` — 有界队列 + 异步批量上报至后端，3 次指数退避重试
 - **示例**: `sdk/examples/example_sdk_demo.py`（真实 API 调用 + 多厂商）

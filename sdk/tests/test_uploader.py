@@ -34,11 +34,11 @@ async def test_uploader_submit_and_observer():
             name="test",
             start_time="2026-01-01T00:00:00",
             end_time="2026-01-01T00:00:01",
-            span_type="trace",
+            span_type="custom",
         )
     )
 
-    assert observed == ["trace"]
+    assert observed == ["custom"]
     assert uploader.stats["queue_size"] == 1
 
     await uploader.stop()
@@ -60,7 +60,7 @@ async def test_uploader_batch_flush():
                     name=f"span{i}",
                     start_time="2026-01-01T00:00:00",
                     end_time="2026-01-01T00:00:01",
-                    span_type="trace",
+                    span_type="custom",
                 )
             )
 
@@ -92,7 +92,7 @@ async def test_uploader_retry_and_drop():
                 name="test",
                 start_time="2026-01-01T00:00:00",
                 end_time="2026-01-01T00:00:01",
-                span_type="trace",
+                span_type="custom",
             )
         )
 
@@ -121,7 +121,7 @@ async def test_uploader_remove_observer():
             name="test",
             start_time="2026-01-01T00:00:00",
             end_time="2026-01-01T00:00:01",
-            span_type="trace",
+            span_type="custom",
         )
     )
 
@@ -146,7 +146,7 @@ async def test_uploader_queue_full_backpressure():
             trace_id="overflow",
             span_id="overflow",
             name="overflow",
-            span_type="trace",
+            span_type="custom",
         )
     )
 
@@ -178,12 +178,12 @@ async def test_uploader_observer_exception_isolation():
             name="test",
             start_time="2026-01-01T00:00:00",
             end_time="2026-01-01T00:00:01",
-            span_type="trace",
+            span_type="custom",
         )
     )
 
     # 第二个 observer 仍然被调用
-    assert good_observed == ["trace"]
+    assert good_observed == ["custom"]
     assert uploader.stats["queue_size"] == 1
 
     await uploader.stop()

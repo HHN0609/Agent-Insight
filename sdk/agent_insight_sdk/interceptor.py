@@ -109,7 +109,7 @@ class OpenAIInterceptor:
             name=ctx.name,
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            span_type="trace",
+            span_type="custom",
             attributes={"model": model_name, "stream": False},
         )
 
@@ -175,7 +175,7 @@ class OpenAIInterceptor:
             name=ctx.name,
             start_time=start_time.isoformat(),
             end_time=end_time.isoformat(),
-            span_type="trace",
+            span_type="custom",
             attributes={"model": model_name, "error": error},
         )
 
@@ -236,7 +236,7 @@ class OpenAIInterceptor:
                 name=self._ctx.name,
                 start_time=self._start_time.isoformat(),
                 end_time=end_time.isoformat(),
-                span_type="trace",
+                span_type="custom",
                 attributes={"model": self._model_name, "stream": True},
             )
 

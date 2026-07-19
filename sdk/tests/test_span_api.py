@@ -1,17 +1,17 @@
 """
-TraceAPI 单元测试
+SpanAPI 单元测试
 """
 
 import asyncio
 
 import pytest
 
-from agent_insight_sdk import TraceAPI, clear_current_context, get_current_context
+from agent_insight_sdk import SpanAPI, clear_current_context, get_current_context
 
 
 @pytest.mark.asyncio
-async def test_trace_api_lifecycle(fake_uploader):
-    api = TraceAPI(fake_uploader)
+async def test_span_api_lifecycle(fake_uploader):
+    api = SpanAPI(fake_uploader)
 
     ctx = api.start_trace("user_task")
     assert get_current_context().trace_id == ctx.trace_id
@@ -24,15 +24,15 @@ async def test_trace_api_lifecycle(fake_uploader):
 
     await asyncio.sleep(0.05)
 
-    trace_spans = [s for s in fake_uploader.spans if s["span_type"] == "trace"]
-    assert len(trace_spans) == 2  # step1 + user_task
+    custom_spans = [s for s in fake_uploader.spans if s["span_type"] == "custom"]
+    assert len(custom_spans) == 2  # step1 + user_task
 
     clear_current_context()
 
 
 @pytest.mark.asyncio
-async def test_trace_api_nested_spans(fake_uploader):
-    api = TraceAPI(fake_uploader)
+async def test_span_api_nested_spans(fake_uploader):
+    api = SpanAPI(fake_uploader)
 
     root = api.start_trace("root")
     child = api.start_span("child")
@@ -47,7 +47,7 @@ async def test_trace_api_nested_spans(fake_uploader):
 
     await asyncio.sleep(0.05)
 
-    names = [s["name"] for s in fake_uploader.spans if s["span_type"] == "trace"]
+    names = [s["name"] for s in fake_uploader.spans if s["span_type"] == "custom"]
     assert "child" in names
     assert "grandchild" in names
     assert "root" in names
@@ -56,35 +56,35 @@ async def test_trace_api_nested_spans(fake_uploader):
 
 
 @pytest.mark.asyncio
-async def test_trace_api_end_span_without_context(fake_uploader):
-    api = TraceAPI(fake_uploader)
+async def test_span_api_end_span_without_context(fake_uploader):
+    api = SpanAPI(fake_uploader)
 
     # 不传 ctx 且当前无上下文时不应抛错
     clear_current_context()
     api.end_span()
 
     await asyncio.sleep(0.05)
-    trace_spans = [s for s in fake_uploader.spans if s["span_type"] == "trace"]
-    assert len(trace_spans) == 0
+    custom_spans = [s for s in fake_uploader.spans if s["span_type"] == "custom"]
+    assert len(custom_spans) == 0
 
 
 @pytest.mark.asyncio
-async def test_trace_api_end_trace_without_start(fake_uploader):
+async def test_span_api_end_trace_without_start(fake_uploader):
     """未 start_trace 时 end_trace 不应抛异常"""
-    api = TraceAPI(fake_uploader)
+    api = SpanAPI(fake_uploader)
     clear_current_context()
 
     api.end_trace(attributes={"status": "completed"})
 
     await asyncio.sleep(0.05)
-    trace_spans = [s for s in fake_uploader.spans if s["span_type"] == "trace"]
-    assert len(trace_spans) == 0
+    custom_spans = [s for s in fake_uploader.spans if s["span_type"] == "custom"]
+    assert len(custom_spans) == 0
 
 
 @pytest.mark.asyncio
-async def test_trace_api_custom_trace_id(fake_uploader):
+async def test_span_api_custom_trace_id(fake_uploader):
     """start_trace 传入自定义 trace_id 时应使用它"""
-    api = TraceAPI(fake_uploader)
+    api = SpanAPI(fake_uploader)
 
     custom_id = "my-custom-trace-id-12345"
     ctx = api.start_trace("custom", trace_id=custom_id)
@@ -95,16 +95,16 @@ async def test_trace_api_custom_trace_id(fake_uploader):
     api.end_trace()
     await asyncio.sleep(0.05)
 
-    trace_spans = [s for s in fake_uploader.spans if s["span_type"] == "trace"]
-    assert trace_spans[0]["trace_id"] == custom_id
+    custom_spans = [s for s in fake_uploader.spans if s["span_type"] == "custom"]
+    assert custom_spans[0]["trace_id"] == custom_id
 
     clear_current_context()
 
 
 @pytest.mark.asyncio
-async def test_trace_api_span_restores_parent_context(fake_uploader):
+async def test_span_api_span_restores_parent_context(fake_uploader):
     """end_span 后当前上下文应恢复为父 span"""
-    api = TraceAPI(fake_uploader)
+    api = SpanAPI(fake_uploader)
 
     root = api.start_trace("root")
     child = api.start_span("child")

@@ -43,7 +43,7 @@ async def simulate_tool_call(name: str, duration_ms: float, uploader: AsyncBatch
         name=name,
         start_time=start_time.isoformat(),
         end_time=end_time.isoformat(),
-        span_type="trace",
+        span_type="custom",
         attributes={"tool": name, "status": "success"},
     )
     await uploader.submit(span)
@@ -70,18 +70,18 @@ async def simulate_llm_call_non_stream(
     decode_ms = duration_ms * 0.7
     tps = output_tokens / (decode_ms / 1000.0) if decode_ms > 0 else 0
 
-    # Trace span
-    trace_span = SpanData(
+    # Custom span
+    custom_span = SpanData(
         trace_id=llm_ctx.trace_id,
         span_id=llm_ctx.span_id,
         parent_span_id=llm_ctx.parent_span_id,
         name=f"llm_call_{model_name}",
         start_time=start_time.isoformat(),
         end_time=end_time.isoformat(),
-        span_type="trace",
+        span_type="custom",
         attributes={"model": model_name, "stream": False},
     )
-    await uploader.submit(trace_span)
+    await uploader.submit(custom_span)
 
     # Metrics span
     metrics_span = SpanData(
@@ -125,18 +125,18 @@ async def simulate_llm_call_stream(
 
     tps = output_tokens / (decode_ms / 1000.0) if decode_ms > 0 else 0
 
-    # Trace span
-    trace_span = SpanData(
+    # Custom span
+    custom_span = SpanData(
         trace_id=llm_ctx.trace_id,
         span_id=llm_ctx.span_id,
         parent_span_id=llm_ctx.parent_span_id,
         name=f"llm_stream_{model_name}",
         start_time=start_time.isoformat(),
         end_time=end_time.isoformat(),
-        span_type="trace",
+        span_type="custom",
         attributes={"model": model_name, "stream": True},
     )
-    await uploader.submit(trace_span)
+    await uploader.submit(custom_span)
 
     # Metrics span
     metrics_span = SpanData(
@@ -216,7 +216,7 @@ async def main():
         name="agent_task",
         start_time=start_time.isoformat(),
         end_time=end_time.isoformat(),
-        span_type="trace",
+        span_type="custom",
         attributes={"status": "completed"},
     )
     await uploader.submit(agent_span)

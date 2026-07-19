@@ -326,7 +326,7 @@ async def send_batch(data: List[Dict[str, Any]]) -> None:
 ```python
 # backend/app/kafka/consumer.py
 async def consume_loop() -> None:
-    batches = {"trace": [], "metrics": [], "prompt": [], ...}
+    batches = {"custom": [], "metrics": [], "prompt": [], ...}
     
     while True:
         msg = await asyncio.wait_for(_consumer.getone(), timeout=5.0)

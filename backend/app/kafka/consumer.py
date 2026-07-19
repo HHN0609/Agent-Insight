@@ -1,7 +1,7 @@
 """
 Kafka 消费者 - 消费原始日志并写入 ClickHouse
 
-支持的数据类型：trace / llm_metrics / prompt / tool_call / session
+支持的数据类型：custom / llm_metrics / prompt / tool_call / session
 """
 
 import asyncio
@@ -76,7 +76,7 @@ async def stop_consumer() -> None:
 async def consume_loop() -> None:
     """消费循环：按数据类型分流到 ClickHouse 对应表"""
     batches: Dict[str, List[Dict[str, Any]]] = {
-        "trace": [],
+        "custom": [],
         "metrics": [],
         "prompt": [],
         "tool_call": [],
@@ -84,7 +84,7 @@ async def consume_loop() -> None:
     }
 
     flush_map = {
-        "trace": (insert_traces, flush_traces),
+        "custom": (insert_traces, flush_custom),
         "metrics": (insert_metrics, flush_metrics),
         "prompt": (insert_prompts, flush_prompts),
         "tool_call": (insert_tool_calls, flush_tool_calls),
@@ -105,7 +105,7 @@ async def consume_loop() -> None:
                 items = data if isinstance(data, list) else [data]
 
                 for item in items:
-                    span_type = item.get("span_type", "trace")
+                    span_type = item.get("span_type", "custom")
                     parsed = parse_item(item)
 
                     if span_type == "llm_metrics":
@@ -117,7 +117,7 @@ async def consume_loop() -> None:
                     elif span_type == "session":
                         batches["session"].append(parsed)
                     else:
-                        batches["trace"].append(parsed)
+                        batches["custom"].append(parsed)
 
             except asyncio.TimeoutError:
                 pass  # 超时仅唤醒循环，下方仍按批量阈值判断是否刷新
@@ -146,12 +146,12 @@ async def consume_loop() -> None:
 
 def parse_item(item: Dict[str, Any]) -> Dict[str, Any]:
     """将原始 item 解析为目标表字段"""
-    span_type = item.get("span_type", "trace")
-    parse_fn = PARSE_MAP.get(span_type, parse_trace)
+    span_type = item.get("span_type", "custom")
+    parse_fn = PARSE_MAP.get(span_type, parse_custom)
     return parse_fn(item)
 
 
-def parse_trace(item: Dict[str, Any]) -> Dict[str, Any]:
+def parse_custom(item: Dict[str, Any]) -> Dict[str, Any]:
     return {
         "trace_id": item["trace_id"],
         "span_id": item["span_id"],
@@ -235,7 +235,7 @@ def parse_session(item: Dict[str, Any]) -> Dict[str, Any]:
 
 
 PARSE_MAP = {
-    "trace": parse_trace,
+    "custom": parse_custom,
     "llm_metrics": parse_llm_metrics,
     "prompt": parse_prompt,
     "tool_call": parse_tool_call,
@@ -296,7 +296,7 @@ def calculate_cost(model_name: str, input_tokens: int, output_tokens: int) -> fl
 
 # ---- 批量写入 ----
 
-async def flush_traces(batch: List[dict]) -> None:
+async def flush_custom(batch: List[dict]) -> None:
     await _retry_insert(insert_traces, batch, "traces")
 
 

@@ -44,9 +44,10 @@ from .context import TraceContext, clear_current_context, set_current_context
 from .uploader import AsyncBatchUploader, SpanData
 
 
-# 默认模型单价：USD / 1M tokens
-# 价格会随厂商调整，使用者可通过 pricing 参数覆盖
-DEFAULT_PRICING: Dict[str, Dict[str, float]] = {
+# 模型单价表：USD / 1M tokens
+# 与后端 backend/app/kafka/consumer.py 的 MODEL_PRICING 保持一致，
+# 修改任一处时请同步另一处。价格会随厂商调整，使用者可通过 pricing 参数覆盖。
+MODEL_PRICING: Dict[str, Dict[str, float]] = {
     # OpenAI GPT-5.6 系列（2026-07 发布）
     "gpt-5.6-sol": {"input": 5.00, "output": 30.00},
     "gpt-5.6-terra": {"input": 2.50, "output": 15.00},
@@ -66,6 +67,10 @@ DEFAULT_PRICING: Dict[str, Dict[str, float]] = {
     "deepseek-chat": {"input": 0.14, "output": 0.28},
     "deepseek-reasoner": {"input": 0.55, "output": 2.19},
 }
+
+# 兜底单价：USD / 1M tokens，未命中 MODEL_PRICING 的模型按此计价
+# 与后端 backend/app/kafka/consumer.py 的 DEFAULT_PRICING 保持一致
+DEFAULT_PRICING: Dict[str, float] = {"input": 1.00, "output": 2.00}
 
 
 @dataclass
@@ -103,7 +108,7 @@ class SessionSDK:
         pricing: Optional[Dict[str, Dict[str, float]]] = None,
     ):
         self._uploader = uploader
-        self._pricing = pricing or DEFAULT_PRICING
+        self._pricing = pricing or MODEL_PRICING
         self._sessions: Dict[str, _SessionState] = {}
         self._observer_id = uploader.add_observer(self._on_span_submitted)
 
@@ -253,11 +258,24 @@ class SessionSDK:
     def _estimate_cost(
         self, model_name: str, input_tokens: int, output_tokens: int
     ) -> float:
-        """根据模型单价估算本次调用成本（USD）"""
-        price = self._pricing.get(model_name) or self._pricing.get("unknown")
-        if price is None:
-            return 0.0
+        """根据模型单价估算本次调用成本（USD）
 
-        input_cost = input_tokens * price.get("input", 0.0) / 1_000_000
-        output_cost = output_tokens * price.get("output", 0.0) / 1_000_000
+        匹配策略与后端 consumer.calculate_cost 保持一致：
+          - 按 key 长度降序做前缀匹配，长 key 优先
+            （gpt-5.4-mini 先于 gpt-5.4 命中，避免短 key 误用更高单价）
+          - 大小写不敏感
+          - 未命中走 DEFAULT_PRICING 兜底价
+        """
+        name_lower = model_name.lower()
+        price = None
+        # 按 key 长度降序，优先匹配更具体的长名（gpt-5.4-mini 先于 gpt-5.4）
+        for key in sorted(self._pricing, key=len, reverse=True):
+            if name_lower.startswith(key.lower()):
+                price = self._pricing[key]
+                break
+        if price is None:
+            price = DEFAULT_PRICING
+
+        input_cost = input_tokens * price["input"] / 1_000_000
+        output_cost = output_tokens * price["output"] / 1_000_000
         return input_cost + output_cost

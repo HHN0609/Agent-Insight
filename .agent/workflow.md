@@ -15,11 +15,11 @@
 以下改动会触及多个模块，提交前必须逐项确认：
 
 ### 改动 Token 定价表
-- [ ] `sdk/agent_insight_sdk/session_sdk.py` 的 `DEFAULT_PRICING`
+- [ ] `sdk/agent_insight_sdk/session_sdk.py` 的 `MODEL_PRICING` / `DEFAULT_PRICING`
 - [ ] `backend/app/kafka/consumer.py` 的 `MODEL_PRICING` / `DEFAULT_PRICING`
 - [ ] 两处 key 集合、单价、匹配策略（长 key 前缀优先）完全一致
 - [ ] `backend/README.md` 定价表小节同步更新
-- [ ] 对应测试：`backend/tests/test_consumer.py` 的定价矩阵用例
+- [ ] 对应测试：`backend/tests/test_consumer.py` 与 `sdk/tests/test_session_sdk.py` 的定价矩阵用例
 
 ### 新增 / 修改 span_type
 - [ ] `sdk/agent_insight_sdk/uploader.py`（`SpanData` 字段与序列化分支）

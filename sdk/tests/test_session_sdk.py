@@ -103,8 +103,10 @@ async def test_session_context_manager(fake_uploader):
 
 
 @pytest.mark.asyncio
-async def test_unknown_model_cost_zero(fake_uploader):
-    """未配置价格的模型，cost 应返回 0.0"""
+async def test_unknown_model_uses_default_pricing(fake_uploader):
+    """未命中 MODEL_PRICING 的模型应走 DEFAULT_PRICING 兜底价，与后端一致"""
+    from agent_insight_sdk.session_sdk import DEFAULT_PRICING
+
     session_sdk = SessionSDK(fake_uploader)
     sess = session_sdk.start_session(name="test")
 
@@ -128,9 +130,46 @@ async def test_unknown_model_cost_zero(fake_uploader):
     await asyncio.sleep(0.05)
 
     s = [s for s in fake_uploader.spans if s["span_type"] == "session"][0]
-    assert s["total_cost_usd"] == 0.0
+    # 兜底价 1.00/2.00 per 1M：9999 * (1.00 + 2.00) / 1_000_000
+    expected = 9999 * (DEFAULT_PRICING["input"] + DEFAULT_PRICING["output"]) / 1_000_000
+    assert s["total_cost_usd"] == pytest.approx(expected)
     # token 仍然应该被统计
     assert s["total_tokens"] == 19998
+
+    session_sdk.close()
+    clear_current_context()
+
+
+@pytest.mark.asyncio
+async def test_estimate_cost_matches_backend_strategy(fake_uploader):
+    """SDK _estimate_cost 的匹配策略必须与后端 consumer.calculate_cost 一致
+
+    覆盖：长 key 优先于短 key、大小写不敏感、带版本后缀的前缀命中。
+    """
+    from agent_insight_sdk.session_sdk import MODEL_PRICING
+
+    session_sdk = SessionSDK(fake_uploader)
+
+    def cost_for(model, input_tokens, output_tokens):
+        # 直接调用私有方法，避免上报噪声
+        return session_sdk._estimate_cost(model, input_tokens, output_tokens)
+
+    # 长 key 优先：gpt-5.4-mini (0.75/4.50) 必须先于 gpt-5.4 (2.50/15.00) 命中
+    mini = cost_for("gpt-5.4-mini", 1_000_000, 1_000_000)
+    base = cost_for("gpt-5.4", 1_000_000, 1_000_000)
+    p_mini = MODEL_PRICING["gpt-5.4-mini"]
+    p_base = MODEL_PRICING["gpt-5.4"]
+    assert mini == pytest.approx(p_mini["input"] + p_mini["output"])
+    assert base == pytest.approx(p_base["input"] + p_base["output"])
+    assert mini != base
+
+    # 大小写不敏感
+    assert cost_for("GPT-5.4", 1000, 500) == pytest.approx(
+        cost_for("gpt-5.4", 1000, 500)
+    )
+
+    # 带版本后缀的前缀命中：gpt-5.6-sol-preview → gpt-5.6-sol
+    assert cost_for("gpt-5.6-sol-preview", 1_000_000, 0) == pytest.approx(5.00)
 
     session_sdk.close()
     clear_current_context()

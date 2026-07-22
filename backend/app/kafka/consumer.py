@@ -246,7 +246,7 @@ PARSE_MAP = {
 # ---- Token 成本计算 ----
 
 # 模型单价表：USD / 1M tokens
-# 与 SDK 端 agent_insight_sdk.session_sdk.DEFAULT_PRICING 保持一致，
+# 与 SDK 端 agent_insight_sdk.session_sdk.MODEL_PRICING 保持一致，
 # 修改任一处时请同步另一处。
 MODEL_PRICING: Dict[str, Dict[str, float]] = {
     # OpenAI GPT-5.6 系列（2026-07 发布）

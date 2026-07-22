@@ -34,7 +34,7 @@ pip install pytest pytest-asyncio httpx
 | `test_span_api.py` | 6 | `span_api.SpanAPI` | 生命周期、嵌套 span、空上下文安全、end_trace 无 start、自定义 trace_id、end_span 恢复父上下文 |
 | `test_uploader.py` | 6 | `uploader.AsyncBatchUploader` | submit+observer、批量 flush、重试退避（mock sleep）、移除 observer、队列满背压、observer 异常隔离 |
 | `test_providers.py` | 9 | `providers.base.LLMInterceptor` + OpenAI/Anthropic Adapter | 非流式/流式拦截、异常上报、unwrap 恢复、Anthropic 流式/多模态 prompt、自定义 adapter |
-| `test_session_sdk.py` | 8 | `session_sdk.SessionSDK` | 上下文设置、聚合（spans/tokens/cost）、context manager、自定义定价、未知模型 cost=0、未知 session_id 安全、close 停止聚合、并发 session 不串扰 |
+| `test_session_sdk.py` | 9 | `session_sdk.SessionSDK` | 上下文设置、聚合（spans/tokens/cost）、context manager、自定义定价、未知模型走兜底价、定价匹配策略与后端一致、未知 session_id 安全、close 停止聚合、并发 session 不串扰 |
 | `test_span_data.py` | 6 | `uploader.SpanData.to_dict()` | 各 span_type 字段映射（custom/prompt/tool_call/session）、默认值、parent_span_id 空字符串 |
 | `test_integration.py` | 3 | 多模块协作 | 端到端 Session+LLM+Tool 聚合、跨模块 parent_span_id 链路、Session+SpanAPI+ToolSDK 混合 |
 | `test_agent_simulation.py` | — | 全链路连通性 | **非 pytest 用例**，是手动运行的端到端脚本，需后端在线，见下方说明 |

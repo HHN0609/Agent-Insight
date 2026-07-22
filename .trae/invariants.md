@@ -33,7 +33,7 @@
 
 定价表（USD / 1M tokens）在**两处**独立维护，修改任一处必须同步另一处：
 
-- `sdk/agent_insight_sdk/session_sdk.py` — `DEFAULT_PRICING`（SDK 侧估算 session 总成本）
+- `sdk/agent_insight_sdk/session_sdk.py` — `MODEL_PRICING` / `DEFAULT_PRICING`（SDK 侧估算 session 总成本）
 - `backend/app/kafka/consumer.py` — `MODEL_PRICING` / `DEFAULT_PRICING`（后端写入 `llm_metrics.cost_usd`）
 
 **匹配策略必须保持一致**：按 key 长度降序对 `model_name` 做**前缀匹配**，长 key 优先（`gpt-5.4-mini` 必须先于 `gpt-5.4` 命中，避免短 key 误用更高单价）；大小写不敏感；未命中走兜底价。
